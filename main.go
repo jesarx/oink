@@ -131,6 +131,7 @@ func main() {
 	mux.HandleFunc("GET /entradas", app.requireAuth(app.incomesPage))
 	mux.HandleFunc("GET /fijos", app.requireAuth(app.fixedPage))
 	mux.HandleFunc("GET /mes", app.requireAuth(app.monthPage))
+	mux.HandleFunc("GET /reportes", app.requireAuth(app.reportsPage))
 	mux.HandleFunc("GET /ajustes", app.requireAuth(app.settingsPage))
 	mux.HandleFunc("GET /tx/{id}", app.requireAuth(app.txEditPage))
 

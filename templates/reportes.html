@@ -1,0 +1,58 @@
+{{define "content"}}
+<header class="top">
+  {{if .Prev.Valid}}<a class="navarrow" href="/reportes?c={{.Prev.Int64}}">‹</a>{{else}}<span class="navarrow off">‹</span>{{end}}
+  <h1 class="center">{{month .C.StartedOn}}{{if not .IsCurrent}} <span class="muted small">(cerrado)</span>{{end}}</h1>
+  {{if .Next.Valid}}<a class="navarrow" href="/reportes?c={{.Next.Int64}}">›</a>{{else}}<span class="navarrow off">›</span>{{end}}
+</header>
+
+<section class="hero">
+  <p class="label">Gastado en el mes</p>
+  <p class="big">{{money .Spent}}</p>
+  <p class="sub">de {{money .Incomes}} en entradas · ahorro {{money .Saved}}</p>
+</section>
+
+<section class="summary">
+  <div class="cell"><span class="k">Fijos</span><span class="v">{{money .Fixed}}</span></div>
+  <div class="cell"><span class="k">Tarjeta</span><span class="v">{{money .Card}}</span></div>
+  <div class="cell"><span class="k">Efectivo (retiros)</span><span class="v">{{money .Withdrawals}}</span></div>
+  <div class="cell hi"><span class="k">Ahorro del mes</span><span class="v">{{money .Saved}}</span></div>
+</section>
+
+<h2 class="sec">¿En qué gastaste?</h2>
+<p class="muted small subsec">Tarjeta, efectivo y fijos agrupados por concepto.</p>
+{{if .Concepts}}
+<ul class="breakdown">
+{{range .Concepts}}
+  <li>
+    <div class="blabel">
+      <span class="name">{{.Label}}{{if gt .Count 1}} <span class="muted small">×{{.Count}}</span>{{end}}</span>
+      <span class="v">{{money .Amount}}</span>
+    </div>
+    <div class="repbar"><div class="rfill" data-w="{{.Pct}}"></div></div>
+  </li>
+{{end}}
+</ul>
+<p class="muted small subsec">Total por concepto: {{money .ConceptTotal}}</p>
+{{else}}
+<p class="empty">Sin gastos registrados en este mes.</p>
+{{end}}
+
+<h2 class="sec">Historial de meses</h2>
+{{if .History}}
+<ul class="histlist">
+{{range .History}}
+  <li>
+    <a href="/reportes?c={{.ID}}" class="{{if eq .ID $.C.ID}}on{{end}}">
+      <span class="hmonth">{{month .StartedOn}}</span>
+      <span class="hnums">
+        <span class="muted small">gastado</span> <span class="v">{{money .Spent}}</span>
+        <span class="hsaved {{if lt .Saved 0}}neg{{end}}">ahorro {{money .Saved}}</span>
+      </span>
+    </a>
+  </li>
+{{end}}
+</ul>
+{{else}}
+<p class="empty">Aún no hay meses para comparar.</p>
+{{end}}
+{{end}}

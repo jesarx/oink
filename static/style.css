@@ -13,6 +13,8 @@
   --blue: #6fa8e8;
 }
 * { box-sizing: border-box; margin: 0; }
+/* el atributo hidden debe ganar sobre cualquier display de clase (.overlay, .chips…) */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   background: var(--bg);
@@ -170,6 +172,30 @@ input:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color:
 .keys button:active { background: var(--card2); }
 .save { padding: 15px; font-size: 17px; border-radius: 14px; }
 .save:disabled { opacity: .4; }
+
+/* ---- reportes ---- */
+.sec { font-size: 15px; font-weight: 600; margin: 22px 0 2px; }
+.subsec { margin-bottom: 10px; }
+.breakdown { list-style: none; padding: 0; margin: 6px 0 4px; }
+.breakdown li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.breakdown li:last-child { border-bottom: 0; }
+.blabel { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+.blabel .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blabel .v { font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.repbar { height: 6px; background: var(--card2); border-radius: 3px; overflow: hidden; }
+.repbar .rfill { height: 100%; width: 0; border-radius: 3px; background: var(--pink); transition: width .4s ease; }
+
+.histlist { list-style: none; padding: 0; }
+.histlist li a {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px 6px; border-bottom: 1px solid var(--line); color: var(--text);
+}
+.histlist li a.on { background: var(--card); border-radius: 10px; padding-left: 12px; padding-right: 12px; border-bottom-color: transparent; }
+.histlist .hmonth { text-transform: capitalize; }
+.histlist .hnums { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 14px; }
+.histlist .hnums .v { font-variant-numeric: tabular-nums; }
+.histlist .hsaved { font-size: 12px; color: var(--green); font-variant-numeric: tabular-nums; }
+.histlist .hsaved.neg { color: var(--red); }
 
 /* ---- nav ---- */
 .tabs {
