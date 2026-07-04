@@ -1,0 +1,44 @@
+{{define "content"}}
+<h1>Gastos fijos</h1>
+<p class="muted">Los fijos pendientes ya están descontados del disponible; aquí solo registras cuándo los pagas.</p>
+
+{{range .Templates}}
+<div class="row tpl">
+  <div>
+    <p>{{.Name}}</p>
+    <p class="muted small">{{money .Amount}}{{if .DoneOn.Valid}} · pagado el {{date .DoneOn.Time}}{{end}}</p>
+  </div>
+  {{if .DoneOn.Valid}}
+  <span class="paid">✓ pagado</span>
+  {{else}}
+  <form method="post" action="/fixed/pay" class="inline">
+    <input type="hidden" name="template_id" value="{{.ID}}">
+    <button class="btn primary">Ya pagué</button>
+  </form>
+  {{end}}
+  <details>
+    <summary>Editar</summary>
+    <form method="post" action="/template/{{.ID}}" class="edit">
+      <input type="text" name="name" value="{{.Name}}" required>
+      <input type="text" name="amount" inputmode="decimal" value="{{amt .Amount}}" required>
+      <button class="btn">Guardar</button>
+    </form>
+    <form method="post" action="/template/{{.ID}}/delete">
+      <button class="btn danger" data-confirm="¿Borrar este gasto fijo?">Borrar</button>
+    </form>
+  </details>
+</div>
+{{else}}
+<p class="empty">Aún no tienes gastos fijos. Da de alta tu renta, internet, suscripciones…</p>
+{{end}}
+
+<details class="add">
+  <summary>+ Nuevo gasto fijo</summary>
+  <form method="post" action="/template" class="edit">
+    <input type="hidden" name="kind" value="fixed">
+    <input type="text" name="name" placeholder="Nombre (ej. Internet)" required>
+    <input type="text" name="amount" inputmode="decimal" placeholder="Monto" required>
+    <button class="btn primary">Agregar</button>
+  </form>
+</details>
+{{end}}

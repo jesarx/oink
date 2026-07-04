@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>Editar movimiento</h1>
+<p class="muted">{{kindLabel .T.Kind .T.Credit}}{{if .T.TplName.Valid}} · {{.T.TplName.String}}{{end}}</p>
+<form method="post" action="/tx/{{.T.ID}}" class="edit stack">
+  <label>Monto
+    <input type="text" name="amount" inputmode="decimal" value="{{.Amount}}" required>
+  </label>
+  <label>Concepto
+    <input type="text" name="concept" value="{{.T.Concept}}" maxlength="80" placeholder="(opcional)">
+  </label>
+  <label>Fecha
+    <input type="date" name="made_on" value="{{.Date}}" required>
+  </label>
+  {{if eq .T.Kind "card"}}
+  <label class="toggle wide"><input type="checkbox" name="credit" {{if .T.Credit}}checked{{end}}> tarjeta de crédito</label>
+  {{end}}
+  <button class="btn primary">Guardar cambios</button>
+</form>
+<form method="post" action="/tx/{{.T.ID}}/delete">
+  <button class="btn danger" data-confirm="¿Borrar este movimiento?">Borrar movimiento</button>
+</form>
+<p><a class="muted" href="/mes">‹ Volver al mes</a></p>
+{{end}}

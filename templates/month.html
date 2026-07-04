@@ -1,0 +1,35 @@
+{{define "content"}}
+<header class="top">
+  {{if .Prev.Valid}}<a class="navarrow" href="/mes?c={{.Prev.Int64}}">‹</a>{{else}}<span class="navarrow off">‹</span>{{end}}
+  <h1 class="center">Mes {{cycle .C}}{{if not .IsCurrent}} <span class="muted small">(cerrado)</span>{{end}}</h1>
+  {{if .Next.Valid}}<a class="navarrow" href="/mes?c={{.Next.Int64}}">›</a>{{else}}<span class="navarrow off">›</span>{{end}}
+</header>
+
+<section class="summary">
+  <div class="cell"><span class="k">Entradas</span><span class="v">{{money .Incomes}}</span></div>
+  <div class="cell"><span class="k">Fijos pagados</span><span class="v">{{money .Fixed}}</span></div>
+  <div class="cell"><span class="k">Tarjeta</span><span class="v">{{money .Card}}</span></div>
+  <div class="cell"><span class="k">— de crédito</span><span class="v">{{money .CreditCard}}</span></div>
+  <div class="cell"><span class="k">Retiros (efectivo)</span><span class="v">{{money .Withdrawals}}</span></div>
+  <div class="cell hi"><span class="k">{{if .IsCurrent}}Ahorro si ya no gastas{{else}}Ahorro del mes{{end}}</span><span class="v">{{money .Saved}}</span></div>
+</section>
+
+{{if .Txs}}
+<ul class="txlist">
+{{range .Txs}}
+  <li>
+    <a href="/tx/{{.ID}}">
+      <span class="date">{{date .MadeOn}}</span>
+      <span class="what">
+        {{if .Concept}}{{.Concept}}{{else}}<em>sin concepto</em>{{end}}
+        <span class="muted small">{{kindLabel .Kind .Credit}}</span>
+      </span>
+      <span class="amount {{if eq .Kind "income"}}pos{{end}}">{{if eq .Kind "income"}}+{{end}}{{money .Amount}}</span>
+    </a>
+  </li>
+{{end}}
+</ul>
+{{else}}
+<p class="empty">Sin movimientos en este ciclo.</p>
+{{end}}
+{{end}}

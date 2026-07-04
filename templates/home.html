@@ -1,0 +1,75 @@
+{{define "content"}}
+<header class="top">
+  <span class="muted">{{cycle .D.Cycle}}</span>
+  <svg class="minipig" viewBox="0 0 100 100" aria-hidden="true">
+    <circle cx="50" cy="54" r="32" fill="none" stroke="#E06A93" stroke-width="6"/>
+    <ellipse cx="50" cy="56" rx="13" ry="9.5" fill="none" stroke="#E06A93" stroke-width="6"/>
+    <path d="M22 32 L14 18 L30 24 M78 32 L86 18 L70 24" fill="none" stroke="#E06A93" stroke-width="6" stroke-linejoin="round"/>
+  </svg>
+</header>
+
+<section class="hero {{.D.Status}}">
+  <p class="label">Disponible este mes</p>
+  <p class="big">{{money .D.Available}}</p>
+  <p class="sub">ahorro apartado: {{money .S.SavingsGoal}}{{if .D.PendingFixed}} · fijos pendientes ya descontados{{end}}</p>
+  <div class="bar"><div class="fill" data-w="{{.D.PctSpent}}"></div></div>
+  {{if gt .D.Daily 0}}<p class="daily">puedes gastar <strong>{{money .D.Daily}}/día</strong> · quedan {{.D.DaysLeft}} días</p>
+  {{else}}<p class="daily alert">sin margen: cada gasto adicional sale de tu ahorro</p>{{end}}
+  {{if eq .D.Status "warn"}}<p class="banner warn">Vas más rápido que el mes: llevas {{.D.PctSpent}}% del presupuesto.</p>{{end}}
+  {{if eq .D.Status "over"}}<p class="banner over">Tu meta de {{money .S.SavingsGoal}} está en riesgo este mes.</p>{{end}}
+</section>
+
+<section class="split">
+  <button class="pad card-pad" data-open="card">
+    <span class="k">Tarjeta</span>
+    <span class="v">{{money .D.CardTotal}}</span>
+    <span class="hint">gastado en el ciclo</span>
+    <span class="plus blue">+</span>
+  </button>
+  <button class="pad cash-pad" data-open="cash">
+    <span class="k">Efectivo</span>
+    <span class="v {{if lt .D.Envelope 0}}neg{{end}}">{{money .D.Envelope}}</span>
+    <span class="hint">en el sobre semanal</span>
+    <span class="plus green">+</span>
+  </button>
+</section>
+
+<section class="row envelope">
+  <div>
+    <p>Sobre semanal</p>
+    <p class="muted small">{{money .D.Envelope}} de {{money .D.EnvelopeIn}} retirados · lun–dom</p>
+  </div>
+  <button class="btn ghost" data-open="withdrawal" data-amount="{{.S.WeeklyCash}}">Retiré efectivo</button>
+</section>
+
+{{if .D.PendingFixed}}
+<a class="row link" href="/fijos">
+  <p>{{.D.PendingFixed}} gasto{{if gt .D.PendingFixed 1}}s{{end}} fijo{{if gt .D.PendingFixed 1}}s{{end}} por pagar este mes</p>
+  <span class="chev">›</span>
+</a>
+{{end}}
+
+<div class="overlay" id="keypad" hidden>
+  <form method="post" action="/tx" id="txform">
+    <input type="hidden" name="kind" id="kp-kind">
+    <input type="hidden" name="amount" id="kp-amount">
+    <header class="kp-head">
+      <button type="button" class="x" data-close aria-label="Cerrar">×</button>
+      <span id="kp-title">Gasto</span>
+      <label id="kp-credit" class="toggle"><input type="checkbox" name="credit" checked> crédito</label>
+    </header>
+    <p class="kp-display" id="kp-display">$0</p>
+    <div class="chips" data-for="card" hidden>{{range .CardConcepts}}<button type="button" class="chip">{{.}}</button>{{end}}</div>
+    <div class="chips" data-for="cash" hidden>{{range .CashConcepts}}<button type="button" class="chip">{{.}}</button>{{end}}</div>
+    <input type="text" name="concept" id="kp-concept" placeholder="Concepto (opcional)" maxlength="80" autocomplete="off">
+    <div class="keys">
+      <button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button>
+      <button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button>
+      <button type="button" data-d="7">7</button><button type="button" data-d="8">8</button><button type="button" data-d="9">9</button>
+      <button type="button" data-d=".">.</button><button type="button" data-d="0">0</button><button type="button" data-d="del">⌫</button>
+    </div>
+    <button type="submit" class="btn primary save" id="kp-save" disabled>Guardar</button>
+  </form>
+</div>
+
+{{end}}

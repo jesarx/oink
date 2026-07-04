@@ -1,0 +1,26 @@
+{{define "content"}}
+<h1>Ajustes</h1>
+<form method="post" action="/ajustes" class="edit stack">
+  <label>Meta de ahorro mensual
+    <input type="text" name="savings_goal" inputmode="decimal" value="{{.Goal}}" required>
+  </label>
+  <label>Retiro semanal de efectivo
+    <input type="text" name="weekly_cash" inputmode="decimal" value="{{.Weekly}}" required>
+  </label>
+  <button class="btn primary">Guardar</button>
+</form>
+
+<div class="row">
+  <div>
+    <p>Ciclo actual</p>
+    <p class="muted small">{{cycle .Cycle}}</p>
+  </div>
+  <form method="post" action="/cycle/close">
+    <button class="btn ghost" data-confirm="¿Cerrar el mes actual y abrir uno nuevo desde hoy?">Cerrar mes</button>
+  </form>
+</div>
+
+<form method="post" action="/logout" class="logout">
+  <button class="btn">Cerrar sesión</button>
+</form>
+{{end}}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121216">
+<meta name="color-scheme" content="dark">
+<title>oink</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+{{template "content" .}}
+</main>
+{{if .Nav}}
+<nav class="tabs">
+  <a href="/" class="{{if eq .Nav "home"}}on{{end}}"><span class="ico">◉</span>Hoy</a>
+  <a href="/entradas" class="{{if eq .Nav "entradas"}}on{{end}}"><span class="ico">↓</span>Entradas</a>
+  <a href="/fijos" class="{{if eq .Nav "fijos"}}on{{end}}"><span class="ico">↻</span>Fijos</a>
+  <a href="/mes" class="{{if eq .Nav "mes"}}on{{end}}"><span class="ico">≡</span>Mes</a>
+  <a href="/ajustes" class="{{if eq .Nav "ajustes"}}on{{end}}"><span class="ico">⚙</span>Ajustes</a>
+</nav>
+{{end}}
+<script src="/static/app.js"></script>
+</body>
+</html>
