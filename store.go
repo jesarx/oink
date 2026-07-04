@@ -230,6 +230,88 @@ func (a *App) listTx(cycleID int) ([]Tx, error) {
 	return out, rows.Err()
 }
 
+// ---- reportes ----
+
+type ConceptStat struct {
+	Label  string
+	Amount int64
+	Count  int
+	Pct    int // ancho de barra, relativo al concepto más grande
+}
+
+// conceptBreakdown agrupa por concepto lo realmente comprado en el ciclo
+// (tarjeta, efectivo y fijos), ordenado de mayor a menor.
+func (a *App) conceptBreakdown(cycleID int) ([]ConceptStat, int64) {
+	rows, err := a.db.Query(`
+		SELECT COALESCE(NULLIF(concept, ''), 'Sin concepto') AS label,
+		       SUM(amount) AS total, COUNT(*) AS n
+		FROM transactions
+		WHERE cycle_id = $1 AND kind IN ('card','cash','fixed')
+		GROUP BY label
+		ORDER BY total DESC, label`, cycleID)
+	if err != nil {
+		return nil, 0
+	}
+	defer rows.Close()
+	var out []ConceptStat
+	var total, max int64
+	for rows.Next() {
+		var s ConceptStat
+		if rows.Scan(&s.Label, &s.Amount, &s.Count) == nil {
+			out = append(out, s)
+			total += s.Amount
+			if s.Amount > max {
+				max = s.Amount
+			}
+		}
+	}
+	if max > 0 {
+		for i := range out {
+			out[i].Pct = int(out[i].Amount * 100 / max)
+			if out[i].Pct < 4 && out[i].Amount > 0 {
+				out[i].Pct = 4 // barra mínima visible
+			}
+		}
+	}
+	return out, total
+}
+
+type CycleStat struct {
+	ID        int
+	StartedOn time.Time
+	ClosedOn  sql.NullTime
+	Income    int64
+	Spent     int64 // fijos + tarjeta + retiros (salida real del banco)
+	Saved     int64
+}
+
+// cycleHistory regresa los últimos ciclos con sus totales, para comparar meses.
+func (a *App) cycleHistory(limit int) ([]CycleStat, error) {
+	rows, err := a.db.Query(`
+		SELECT c.id, c.started_on, c.closed_on,
+		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income'), 0),
+		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind IN ('fixed','card','withdrawal')), 0)
+		FROM cycles c
+		LEFT JOIN transactions x ON x.cycle_id = c.id
+		GROUP BY c.id
+		ORDER BY c.started_on DESC, c.id DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CycleStat
+	for rows.Next() {
+		var s CycleStat
+		if err := rows.Scan(&s.ID, &s.StartedOn, &s.ClosedOn, &s.Income, &s.Spent); err != nil {
+			return nil, err
+		}
+		s.Saved = s.Income - s.Spent
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func (a *App) recentConcepts(kind string) []string {
 	rows, err := a.db.Query(`
 		SELECT concept FROM transactions
@@ -285,6 +367,11 @@ func fmtDate(t time.Time) string {
 
 func fmtCycle(c Cycle) string {
 	return fmt.Sprintf("desde el %d de %s", c.StartedOn.Day(), spanishMonths[int(c.StartedOn.Month())])
+}
+
+// fmtMonth: "julio 2026" a partir de una fecha (para encabezados de reportes).
+func fmtMonth(t time.Time) string {
+	return fmt.Sprintf("%s %d", spanishMonths[int(t.Month())], t.Year())
 }
 
 // parseMoney convierte "1234.56" o "1,234" a centavos.

@@ -15,6 +15,7 @@ func (a *App) parseTemplates() {
 		"money": fmtMoney,
 		"date":  fmtDate,
 		"cycle": fmtCycle,
+		"month": fmtMonth,
 		"amt": func(cents int64) string {
 			if cents%100 == 0 {
 				return strconv.FormatInt(cents/100, 10)
@@ -40,7 +41,7 @@ func (a *App) parseTemplates() {
 			return k
 		},
 	}
-	pages := []string{"login.html", "home.html", "incomes.html", "fixed.html", "month.html", "settings.html", "txedit.html"}
+	pages := []string{"login.html", "home.html", "incomes.html", "fixed.html", "month.html", "reportes.html", "settings.html", "txedit.html"}
 	a.tmpl = make(map[string]*template.Template, len(pages))
 	for _, p := range pages {
 		t := template.Must(template.New("layout.html").Funcs(funcs).
@@ -364,6 +365,52 @@ func (a *App) monthPage(w http.ResponseWriter, r *http.Request) {
 		"Prev": prev, "Next": next,
 		"Incomes": incomes, "Fixed": fixed, "Card": card, "CreditCard": creditCard,
 		"Withdrawals": withdrawals, "Cash": cash, "Saved": saved,
+	})
+}
+
+// ---- reportes ----
+
+func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
+	cur, err := a.openCycle()
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	c := cur
+	if v := r.URL.Query().Get("c"); v != "" {
+		id, _ := strconv.Atoi(v)
+		var cc Cycle
+		if a.db.QueryRow(`SELECT id, started_on, closed_on FROM cycles WHERE id = $1`, id).
+			Scan(&cc.ID, &cc.StartedOn, &cc.ClosedOn) == nil {
+			c = cc
+		}
+	}
+	var prev, next sql.NullInt64
+	a.db.QueryRow(`SELECT id FROM cycles WHERE (started_on, id) < ($1, $2) ORDER BY started_on DESC, id DESC LIMIT 1`,
+		c.StartedOn, c.ID).Scan(&prev)
+	a.db.QueryRow(`SELECT id FROM cycles WHERE (started_on, id) > ($1, $2) ORDER BY started_on ASC, id ASC LIMIT 1`,
+		c.StartedOn, c.ID).Scan(&next)
+
+	incomes := a.sumTx(c.ID, `kind = 'income'`)
+	fixed := a.sumTx(c.ID, `kind = 'fixed'`)
+	card := a.sumTx(c.ID, `kind = 'card'`)
+	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
+	spent := fixed + card + withdrawals
+	saved := incomes - spent
+
+	concepts, conceptTotal := a.conceptBreakdown(c.ID)
+	history, err := a.cycleHistory(12)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+
+	a.render(w, "reportes.html", map[string]any{
+		"Nav": "reportes", "C": c, "IsCurrent": c.ID == cur.ID,
+		"Prev": prev, "Next": next,
+		"Incomes": incomes, "Fixed": fixed, "Card": card, "Withdrawals": withdrawals,
+		"Spent": spent, "Saved": saved,
+		"Concepts": concepts, "ConceptTotal": conceptTotal, "History": history,
 	})
 }
 

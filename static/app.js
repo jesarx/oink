@@ -10,8 +10,8 @@
     }
   });
 
-  // barra de ritmo (evita estilos inline en el HTML por el CSP)
-  document.querySelectorAll(".bar .fill[data-w]").forEach(function (el) {
+  // barras (ritmo del mes y reportes): evita estilos inline en el HTML por el CSP
+  document.querySelectorAll("[data-w]").forEach(function (el) {
     requestAnimationFrame(function () { el.style.width = el.dataset.w + "%"; });
   });
 
