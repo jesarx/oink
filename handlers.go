@@ -164,7 +164,35 @@ func (a *App) incomesPage(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	a.render(w, "incomes.html", map[string]any{"Nav": "entradas", "Templates": tpls, "Cycle": c})
+	extras, err := a.listExtraIncomes(c.ID)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.render(w, "incomes.html", map[string]any{"Nav": "entradas", "Templates": tpls, "Extras": extras, "Cycle": c})
+}
+
+// incomeAdd registra una entrada no fija (única) en el ciclo actual, sin
+// disparar el cierre de mes que sí provocan las entradas fijas.
+func (a *App) incomeAdd(w http.ResponseWriter, r *http.Request) {
+	concept := strings.TrimSpace(r.FormValue("concept"))
+	amount, err := parseMoney(r.FormValue("amount"))
+	if concept == "" || err != nil || amount <= 0 {
+		http.Error(w, "datos inválidos", 400)
+		return
+	}
+	c, err := a.openCycle()
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, made_on)
+		VALUES ($1,'income',$2,$3,$4)`, c.ID, amount, concept, a.today())
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/entradas", http.StatusSeeOther)
 }
 
 func (a *App) incomeReceive(w http.ResponseWriter, r *http.Request) {

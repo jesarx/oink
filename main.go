@@ -140,6 +140,7 @@ func main() {
 	mux.HandleFunc("POST /tx/{id}", app.requireAuth(app.txUpdate))
 	mux.HandleFunc("POST /tx/{id}/delete", app.requireAuth(app.txDelete))
 	mux.HandleFunc("POST /income/receive", app.requireAuth(app.incomeReceive))
+	mux.HandleFunc("POST /income/add", app.requireAuth(app.incomeAdd))
 	mux.HandleFunc("POST /fixed/pay", app.requireAuth(app.fixedPay))
 	mux.HandleFunc("POST /template", app.requireAuth(app.templateCreate))
 	mux.HandleFunc("POST /template/{id}", app.requireAuth(app.templateUpdate))

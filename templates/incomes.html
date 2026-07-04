@@ -42,4 +42,34 @@
     <button class="btn primary">Agregar</button>
   </form>
 </details>
+
+<h2 class="sec">Entradas no fijas de este mes</h2>
+<p class="muted small subsec">Ingresos únicos (freelance, un regalo, una venta…). Se suman al mes sin cerrar el ciclo.</p>
+{{if .Extras}}
+<ul class="txlist">
+{{range .Extras}}
+  <li>
+    <a href="/tx/{{.ID}}">
+      <span class="date">{{date .MadeOn}}</span>
+      <span class="what">
+        {{if .Concept}}{{.Concept}}{{else}}<em>sin descripción</em>{{end}}
+        <span class="muted small">Entrada no fija</span>
+      </span>
+      <span class="amount pos">+{{money .Amount}}</span>
+    </a>
+  </li>
+{{end}}
+</ul>
+{{else}}
+<p class="empty">Sin entradas no fijas este mes.</p>
+{{end}}
+
+<details class="add">
+  <summary>+ Entrada no fija</summary>
+  <form method="post" action="/income/add" class="edit">
+    <input type="text" name="concept" placeholder="Descripción (ej. Freelance, venta)" maxlength="80" required>
+    <input type="text" name="amount" inputmode="decimal" placeholder="Monto" required>
+    <button class="btn primary">Agregar al mes</button>
+  </form>
+</details>
 {{end}}

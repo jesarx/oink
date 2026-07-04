@@ -209,6 +209,28 @@ func (a *App) listTemplates(kind string, cycleID int) ([]Template, error) {
 	return out, rows.Err()
 }
 
+// listExtraIncomes regresa las entradas no fijas (sin plantilla) del ciclo.
+func (a *App) listExtraIncomes(cycleID int) ([]Tx, error) {
+	rows, err := a.db.Query(`
+		SELECT id, amount, concept, made_on
+		FROM transactions
+		WHERE cycle_id = $1 AND kind = 'income' AND template_id IS NULL
+		ORDER BY made_on DESC, id DESC`, cycleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Tx
+	for rows.Next() {
+		t := Tx{Kind: "income"}
+		if err := rows.Scan(&t.ID, &t.Amount, &t.Concept, &t.MadeOn); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 func (a *App) listTx(cycleID int) ([]Tx, error) {
 	rows, err := a.db.Query(`
 		SELECT x.id, x.kind, x.amount, x.concept, x.credit, x.made_on, t.name
