@@ -34,6 +34,15 @@
   </button>
 </section>
 
+<section class="quickcats">
+  {{range .Cats}}
+  <button class="qcat" data-open="card" data-cat="{{.Key}}">
+    <span class="qc-label">{{.Label}}</span>
+    <span class="qc-amt">{{money .Amount}}</span>
+  </button>
+  {{end}}
+</section>
+
 <section class="row envelope">
   <div>
     <p>Sobre semanal</p>
@@ -53,12 +62,20 @@
   <form method="post" action="/tx" id="txform">
     <input type="hidden" name="kind" id="kp-kind">
     <input type="hidden" name="amount" id="kp-amount">
+    <input type="hidden" name="category" id="kp-category">
     <header class="kp-head">
       <button type="button" class="x" data-close aria-label="Cerrar">×</button>
       <span id="kp-title">Gasto</span>
       <label id="kp-credit" class="toggle"><input type="checkbox" name="credit" checked> crédito</label>
     </header>
     <p class="kp-display" id="kp-display">$0</p>
+    <div class="kp-seg" id="kp-seg" hidden>
+      <button type="button" data-kind="card">Tarjeta</button>
+      <button type="button" data-kind="cash">Efectivo</button>
+    </div>
+    <div class="kp-cats" id="kp-cats" hidden>
+      {{range .Cats}}<button type="button" class="catbtn" data-cat="{{.Key}}">{{.Label}}</button>{{end}}
+    </div>
     <div class="chips" data-for="card" hidden>{{range .CardConcepts}}<button type="button" class="chip">{{.}}</button>{{end}}</div>
     <div class="chips" data-for="cash" hidden>{{range .CashConcepts}}<button type="button" class="chip">{{.}}</button>{{end}}</div>
     <input type="text" name="concept" id="kp-concept" placeholder="Concepto (opcional)" maxlength="80" autocomplete="off">

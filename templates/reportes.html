@@ -11,6 +11,21 @@
   <p class="sub">de {{money .Incomes}} en entradas · ahorro {{money .Saved}}</p>
 </section>
 
+<h2 class="sec">Rubros vigilados</h2>
+<p class="muted small subsec">Lo que llevas gastado este mes en los rubros que quieres reducir.</p>
+<ul class="breakdown">
+{{range .Cats}}
+  <li>
+    <div class="blabel">
+      <span class="name">{{.Label}}</span>
+      <span class="v">{{money .Amount}}{{if gt $.Incomes 0}} <span class="muted small">· {{pct .Amount $.Incomes}}% de tus entradas</span>{{end}}</span>
+    </div>
+    <div class="repbar"><div class="rfill cat" data-w="{{.Pct}}"></div></div>
+  </li>
+{{end}}
+</ul>
+
+<h2 class="sec">Resumen</h2>
 <section class="summary">
   <div class="cell"><span class="k">Fijos</span><span class="v">{{money .Fixed}}</span></div>
   <div class="cell"><span class="k">Tarjeta</span><span class="v">{{money .Card}}</span></div>

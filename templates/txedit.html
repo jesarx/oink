@@ -11,6 +11,14 @@
   <label>Fecha
     <input type="date" name="made_on" value="{{.Date}}" required>
   </label>
+  {{if or (eq .T.Kind "card") (eq .T.Kind "cash")}}
+  <label>Rubro
+    <select name="category">
+      <option value="">Sin rubro</option>
+      {{range .Categories}}<option value="{{.Key}}" {{if eq .Key $.T.Category}}selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+  </label>
+  {{end}}
   {{if eq .T.Kind "card"}}
   <label class="toggle wide"><input type="checkbox" name="credit" {{if .T.Credit}}checked{{end}}> tarjeta de crédito</label>
   {{end}}

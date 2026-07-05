@@ -22,7 +22,7 @@
       <span class="date">{{date .MadeOn}}</span>
       <span class="what">
         {{if .Concept}}{{.Concept}}{{else}}<em>sin concepto</em>{{end}}
-        <span class="muted small">{{kindLabel .Kind .Credit}}</span>
+        <span class="muted small">{{kindLabel .Kind .Credit}}{{if .Category}} · {{catLabel .Category}}{{end}}</span>
       </span>
       <span class="amount {{if eq .Kind "income"}}pos{{end}}">{{if eq .Kind "income"}}+{{end}}{{money .Amount}}</span>
     </a>
