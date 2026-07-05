@@ -22,6 +22,20 @@ func (a *App) parseTemplates() {
 			}
 			return strconv.FormatFloat(float64(cents)/100, 'f', 2, 64)
 		},
+		"pct": func(part, whole int64) int {
+			if whole <= 0 {
+				return 0
+			}
+			return int(part * 100 / whole)
+		},
+		"catLabel": func(key string) string {
+			for _, c := range categories {
+				if c.Key == key {
+					return c.Label
+				}
+			}
+			return key
+		},
 		"kindLabel": func(k string, credit bool) string {
 			switch k {
 			case "card":
@@ -72,6 +86,7 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 	}
 	a.render(w, "home.html", map[string]any{
 		"Nav": "home", "D": d, "S": s,
+		"Cats":         a.categoryTotals(d.Cycle.ID),
 		"CardConcepts": a.recentConcepts("card"),
 		"CashConcepts": a.recentConcepts("cash"),
 	})
@@ -90,6 +105,14 @@ func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "monto inválido", 400)
 		return
 	}
+	category := r.FormValue("category")
+	if !validCategory(category) {
+		http.Error(w, "rubro inválido", 400)
+		return
+	}
+	if kind == "withdrawal" {
+		category = "" // un retiro de cajero no es un gasto de rubro
+	}
 	c, err := a.openCycle()
 	if err != nil {
 		a.fail(w, err)
@@ -97,8 +120,8 @@ func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	concept := strings.TrimSpace(r.FormValue("concept"))
 	credit := kind == "card" && r.FormValue("credit") != "off"
-	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, credit, made_on)
-		VALUES ($1,$2,$3,$4,$5,$6)`, c.ID, kind, amount, concept, credit, a.today())
+	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, category, credit, made_on)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, c.ID, kind, amount, concept, category, credit, a.today())
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -109,14 +132,14 @@ func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 func (a *App) txEditPage(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(r.PathValue("id"))
 	var t Tx
-	err := a.db.QueryRow(`SELECT x.id, x.kind, x.amount, x.concept, x.credit, x.made_on, t.name
+	err := a.db.QueryRow(`SELECT x.id, x.kind, x.amount, x.concept, x.category, x.credit, x.made_on, t.name
 		FROM transactions x LEFT JOIN templates t ON t.id = x.template_id WHERE x.id = $1`, id).
-		Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Credit, &t.MadeOn, &t.TplName)
+		Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Category, &t.Credit, &t.MadeOn, &t.TplName)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	a.render(w, "txedit.html", map[string]any{"Nav": "mes", "T": t,
+	a.render(w, "txedit.html", map[string]any{"Nav": "mes", "T": t, "Categories": categories,
 		"Amount": strconv.FormatFloat(float64(t.Amount)/100, 'f', -1, 64),
 		"Date":   t.MadeOn.Format("2006-01-02")})
 }
@@ -133,11 +156,17 @@ func (a *App) txUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "fecha inválida", 400)
 		return
 	}
+	category := r.FormValue("category")
+	if !validCategory(category) {
+		http.Error(w, "rubro inválido", 400)
+		return
+	}
 	concept := strings.TrimSpace(r.FormValue("concept"))
 	credit := r.FormValue("credit") == "on"
 	_, err = a.db.Exec(`UPDATE transactions SET amount=$1, concept=$2, made_on=$3,
-		credit = CASE WHEN kind='card' THEN $4 ELSE credit END WHERE id=$5`,
-		amount, concept, madeOn, credit, id)
+		credit = CASE WHEN kind='card' THEN $4 ELSE credit END,
+		category = CASE WHEN kind IN ('card','cash') THEN $5 ELSE category END WHERE id=$6`,
+		amount, concept, madeOn, credit, category, id)
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -438,6 +467,7 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 		"Prev": prev, "Next": next,
 		"Incomes": incomes, "Fixed": fixed, "Card": card, "Withdrawals": withdrawals,
 		"Spent": spent, "Saved": saved,
+		"Cats":     a.categoryTotals(c.ID),
 		"Concepts": concepts, "ConceptTotal": conceptTotal, "History": history,
 	})
 }

@@ -81,6 +81,18 @@ em { color: var(--faint); font-style: italic; }
 .plus.blue { color: var(--blue); border: 1.5px solid var(--blue); }
 .plus.green { color: var(--green); border: 1.5px solid var(--green); }
 
+/* ---- rubros rápidos (home) ---- */
+.quickcats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+.qcat {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 6px; text-align: center; color: var(--text);
+  display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.qcat:active { background: var(--card2); }
+.qcat .qc-label { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.qcat .qc-amt { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--amber); }
+
 /* ---- filas ---- */
 .row {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -100,11 +112,11 @@ details summary { color: var(--faint); font-size: 13px; cursor: pointer; padding
 .edit.stack label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 
 /* ---- inputs y botones ---- */
-input[type="text"], input[type="password"], input[type="date"] {
+input[type="text"], input[type="password"], input[type="date"], select {
   background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
   color: var(--text); font-size: 16px; padding: 10px 12px; width: 100%;
 }
-input:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color: transparent; }
+input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color: transparent; }
 .btn {
   background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
   color: var(--text); font-size: 15px; padding: 10px 16px; cursor: pointer;
@@ -163,6 +175,20 @@ input:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color:
   color: var(--muted); font-size: 14px; padding: 7px 14px; white-space: nowrap; cursor: pointer;
 }
 .chip.on { border-color: var(--pink); color: var(--pink); }
+.kp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kp-seg button {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  color: var(--muted); font-size: 15px; padding: 10px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.kp-seg button.on { border-color: var(--pink); color: var(--text); background: var(--card2); }
+.kp-cats { display: flex; gap: 8px; }
+.kp-cats .catbtn {
+  flex: 1; background: var(--card2); border: 1px solid var(--line); border-radius: 999px;
+  color: var(--muted); font-size: 14px; padding: 9px 8px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.kp-cats .catbtn.on { border-color: var(--amber); color: var(--amber); background: transparent; }
 .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: 1; align-content: end; }
 .keys button {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -184,6 +210,7 @@ input:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color:
 .blabel .v { font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .repbar { height: 6px; background: var(--card2); border-radius: 3px; overflow: hidden; }
 .repbar .rfill { height: 100%; width: 0; border-radius: 3px; background: var(--pink); transition: width .4s ease; }
+.repbar .rfill.cat { background: var(--amber); }
 
 .histlist { list-style: none; padding: 0; }
 .histlist li a {

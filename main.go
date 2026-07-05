@@ -58,11 +58,15 @@ CREATE TABLE IF NOT EXISTS transactions (
     template_id int REFERENCES templates(id) ON DELETE SET NULL,
     amount      bigint NOT NULL,
     concept     text NOT NULL DEFAULT '',
+    category    text NOT NULL DEFAULT '',
     credit      boolean NOT NULL DEFAULT false,
     made_on     date NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS transactions_cycle_idx ON transactions (cycle_id, kind);
+-- migración para bases existentes: rubros (comida, libros, alcohol)
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS transactions_cat_idx ON transactions (cycle_id, category);
 
 CREATE TABLE IF NOT EXISTS sessions (
     token      text PRIMARY KEY,

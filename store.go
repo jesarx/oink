@@ -30,13 +30,62 @@ type Cycle struct {
 }
 
 type Tx struct {
-	ID      int
-	Kind    string
-	Amount  int64
-	Concept string
-	Credit  bool
-	MadeOn  time.Time
-	TplName sql.NullString
+	ID       int
+	Kind     string
+	Amount   int64
+	Concept  string
+	Category string
+	Credit   bool
+	MadeOn   time.Time
+	TplName  sql.NullString
+}
+
+// rubros vigilados: gastos que el usuario quiere tener siempre a la vista.
+var categories = []struct{ Key, Label string }{
+	{"comida", "Comida"},
+	{"libros", "Libros"},
+	{"alcohol", "Alcohol"},
+}
+
+func validCategory(c string) bool {
+	if c == "" {
+		return true
+	}
+	for _, x := range categories {
+		if x.Key == c {
+			return true
+		}
+	}
+	return false
+}
+
+type CategoryStat struct {
+	Key    string
+	Label  string
+	Amount int64
+	Pct    int // ancho de barra, relativo al rubro más grande
+}
+
+// categoryTotals suma lo gastado en cada rubro vigilado dentro del ciclo.
+func (a *App) categoryTotals(cycleID int) []CategoryStat {
+	out := make([]CategoryStat, 0, len(categories))
+	var max int64
+	for _, c := range categories {
+		amt := a.sumTx(cycleID, `category = $2`, c.Key)
+		out = append(out, CategoryStat{Key: c.Key, Label: c.Label, Amount: amt})
+		if amt > max {
+			max = amt
+		}
+	}
+	if max > 0 {
+		for i := range out {
+			out[i].Pct = int(out[i].Amount * 100 / max)
+			if out[i].Pct < 4 && out[i].Amount > 0 {
+				out[i].Pct = 4
+			}
+		}
+	}
+	return out
 }
 
 type Dashboard struct {
@@ -233,7 +282,7 @@ func (a *App) listExtraIncomes(cycleID int) ([]Tx, error) {
 
 func (a *App) listTx(cycleID int) ([]Tx, error) {
 	rows, err := a.db.Query(`
-		SELECT x.id, x.kind, x.amount, x.concept, x.credit, x.made_on, t.name
+		SELECT x.id, x.kind, x.amount, x.concept, x.category, x.credit, x.made_on, t.name
 		FROM transactions x LEFT JOIN templates t ON t.id = x.template_id
 		WHERE x.cycle_id = $1
 		ORDER BY x.made_on DESC, x.id DESC`, cycleID)
@@ -244,7 +293,7 @@ func (a *App) listTx(cycleID int) ([]Tx, error) {
 	var out []Tx
 	for rows.Next() {
 		var t Tx
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Credit, &t.MadeOn, &t.TplName); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Category, &t.Credit, &t.MadeOn, &t.TplName); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
