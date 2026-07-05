@@ -115,19 +115,34 @@
       });
     });
 
+    function pressKey(d) {
+      if (d === "del") raw = raw.slice(0, -1);
+      else if (d === ".") { if (raw.indexOf(".") === -1) raw = (raw || "0") + "."; }
+      else {
+        var dot = raw.indexOf(".");
+        if (dot !== -1 && raw.length - dot > 2) return; // máx 2 decimales
+        if (raw.replace(".", "").length >= 7) return;    // máx 7 dígitos
+        raw = raw === "0" ? d : raw + d;
+      }
+      paint();
+    }
+
     pad.querySelectorAll(".keys button").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var d = b.dataset.d;
-        if (d === "del") raw = raw.slice(0, -1);
-        else if (d === ".") { if (raw.indexOf(".") === -1) raw = (raw || "0") + "."; }
-        else {
-          var dot = raw.indexOf(".");
-          if (dot !== -1 && raw.length - dot > 2) return; // máx 2 decimales
-          if (raw.replace(".", "").length >= 7) return;    // máx 7 dígitos
-          raw = raw === "0" ? d : raw + d;
-        }
-        paint();
-      });
+      b.addEventListener("click", function () { pressKey(b.dataset.d); });
+    });
+
+    // teclado físico (computadora): escribe el monto sin usar el mouse.
+    // En el celular no aplica porque no hay teclado físico enviando estas
+    // teclas para el monto; solo se ignora mientras se escribe el concepto.
+    document.addEventListener("keydown", function (e) {
+      if (pad.hidden) return;
+      if (e.key === "Escape") { close(); return; }
+      if (e.target && e.target.id === "kp-concept") return; // escribiendo el concepto
+      if (e.ctrlKey || e.metaKey || e.altKey) return;       // respeta atajos del navegador
+      if (e.key >= "0" && e.key <= "9") { pressKey(e.key); e.preventDefault(); }
+      else if (e.key === "." || e.key === ",") { pressKey("."); e.preventDefault(); }
+      else if (e.key === "Backspace") { pressKey("del"); e.preventDefault(); }
+      else if (e.key === "Enter") { if (!save.disabled) save.click(); e.preventDefault(); }
     });
 
     pad.querySelectorAll(".chip").forEach(function (c) {
