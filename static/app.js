@@ -19,23 +19,31 @@
   var pad = document.getElementById("keypad");
   if (pad) {
     var kindInput = document.getElementById("kp-kind");
+    var creditInput = document.getElementById("kp-credit");
     var amountInput = document.getElementById("kp-amount");
+    var categoryInput = document.getElementById("kp-category");
     var display = document.getElementById("kp-display");
     var title = document.getElementById("kp-title");
-    var creditToggle = document.getElementById("kp-credit");
     var concept = document.getElementById("kp-concept");
     var save = document.getElementById("kp-save");
-    var categoryInput = document.getElementById("kp-category");
     var seg = document.getElementById("kp-seg");
     var cats = document.getElementById("kp-cats");
     var raw = "";
+    var curSource = "debit";
 
-    var titles = { card: "Gasto con tarjeta", cash: "Gasto en efectivo", withdrawal: "Retiro de cajero" };
+    // fuentes de pago: cómo se traduce cada botón a kind+credit del servidor
+    var sources = {
+      debit:      { kind: "card", credit: "off", title: "Gasto con t. débito" },
+      credit:     { kind: "card", credit: "on",  title: "Gasto con t. crédito" },
+      cash:       { kind: "cash", credit: "off", title: "Gasto en efectivo" },
+      withdrawal: { kind: "withdrawal", credit: "off", title: "Retiro de cajero" },
+      cardpay:    { kind: "cardpay", credit: "off", title: "Pago de la tarjeta" }
+    };
     var catLabels = { comida: "Comida", libros: "Libros", alcohol: "Alcohol" };
 
     function updateTitle() {
       var cat = categoryInput.value;
-      title.textContent = cat ? (catLabels[cat] || "Gasto") : (titles[kindInput.value] || "Gasto");
+      title.textContent = cat ? (catLabels[cat] || "Gasto") : sources[curSource].title;
     }
 
     function setCategory(cat) {
@@ -46,26 +54,26 @@
       updateTitle();
     }
 
-    // setKind fija el método de pago y muestra/oculta los controles que
-    // solo aplican a gastos (crédito, selector de método y rubros).
-    function setKind(kind) {
-      kindInput.value = kind;
-      var isCard = kind === "card";
-      var isSpend = isCard || kind === "cash";
-      creditToggle.hidden = !isCard;
-      creditToggle.querySelector("input").checked = isCard;
+    // setSource fija la fuente (t. débito, t. crédito, efectivo, retiro o pago
+    // de tarjeta) y muestra solo los controles que aplican a gastos.
+    function setSource(src) {
+      curSource = src;
+      var m = sources[src];
+      kindInput.value = m.kind;
+      creditInput.value = m.credit;
+      var isSpend = src === "debit" || src === "credit" || src === "cash";
       if (seg) {
         seg.hidden = !isSpend;
-        seg.querySelectorAll("[data-kind]").forEach(function (b) {
-          b.classList.toggle("on", b.dataset.kind === kind);
+        seg.querySelectorAll("[data-source]").forEach(function (b) {
+          b.classList.toggle("on", b.dataset.source === src);
         });
       }
       if (cats) {
         cats.hidden = !isSpend;
-        if (!isSpend) setCategory(""); // los retiros no llevan rubro
+        if (!isSpend) setCategory(""); // retiros y pagos de tarjeta no llevan rubro
       }
       document.querySelectorAll(".chips[data-for]").forEach(function (c) {
-        c.hidden = c.dataset.for !== kind;
+        c.hidden = c.dataset.for !== m.kind;
       });
       updateTitle();
     }
@@ -84,10 +92,10 @@
       save.disabled = !(parseFloat(raw) > 0);
     }
 
-    function open(kind, preset, category) {
-      setKind(kind);
+    function open(src, preset, category) {
+      setSource(src);
       setCategory(category || "");
-      concept.value = kind === "withdrawal" ? "retiro cajero" : "";
+      concept.value = src === "withdrawal" ? "retiro cajero" : (src === "cardpay" ? "pago de tarjeta" : "");
       raw = preset ? String(preset / 100) : "";
       paint();
       pad.hidden = false;
@@ -106,8 +114,8 @@
     });
     pad.querySelector("[data-close]").addEventListener("click", close);
 
-    if (seg) seg.querySelectorAll("[data-kind]").forEach(function (b) {
-      b.addEventListener("click", function () { setKind(b.dataset.kind); });
+    if (seg) seg.querySelectorAll("[data-source]").forEach(function (b) {
+      b.addEventListener("click", function () { setSource(b.dataset.source); });
     });
     if (cats) cats.querySelectorAll(".catbtn").forEach(function (b) {
       b.addEventListener("click", function () {

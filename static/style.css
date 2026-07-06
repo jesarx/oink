@@ -61,24 +61,25 @@ em { color: var(--faint); font-style: italic; }
 .banner.over { background: #2c1717; color: var(--red); }
 
 /* ---- split de gasto ---- */
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0 10px; }
+.split { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 10px; }
 .pad {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-  padding: 14px 10px 16px; text-align: center; color: var(--text);
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 4px 14px; text-align: center; color: var(--text);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 .pad:active { background: var(--card2); }
-.pad .k { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.pad .v { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pad .k { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.pad .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pad .v.neg { color: var(--red); }
-.pad .hint { font-size: 11px; color: var(--faint); }
+.pad .hint { font-size: 10px; color: var(--faint); }
 .plus {
-  width: 54px; height: 54px; border-radius: 50%; margin-top: 8px;
+  width: 44px; height: 44px; border-radius: 50%; margin-top: 6px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 28px; background: var(--card2);
+  font-size: 24px; background: var(--card2);
 }
 .plus.blue { color: var(--blue); border: 1.5px solid var(--blue); }
+.plus.pink { color: var(--pink); border: 1.5px solid var(--pink); }
 .plus.green { color: var(--green); border: 1.5px solid var(--green); }
 
 /* ---- rubros rápidos (home) ---- */
@@ -152,6 +153,7 @@ input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px;
 .txlist .what { display: flex; flex-direction: column; }
 .txlist .amount { font-variant-numeric: tabular-nums; }
 .txlist .amount.pos { color: var(--green); }
+.txlist .amount.pay { color: var(--blue); }
 
 /* ---- teclado ---- */
 .overlay {
@@ -175,20 +177,26 @@ input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px;
   color: var(--muted); font-size: 14px; padding: 7px 14px; white-space: nowrap; cursor: pointer;
 }
 .chip.on { border-color: var(--pink); color: var(--pink); }
-.kp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* fuente de pago: bloques rellenos con acento propio, distintos de los
+   rubros (pastillas delineadas ámbar de abajo) */
+.kp-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .kp-seg button {
-  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-  color: var(--muted); font-size: 15px; padding: 10px; cursor: pointer;
+  background: var(--card2); border: 1px solid var(--card2); border-radius: 12px;
+  color: var(--muted); font-size: 14px; padding: 11px 4px; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.kp-seg button.on { border-color: var(--pink); color: var(--text); background: var(--card2); }
+.kp-seg button.on[data-source="debit"] { border-color: var(--blue); color: var(--blue); background: rgba(111,168,232,.12); }
+.kp-seg button.on[data-source="credit"] { border-color: var(--pink); color: var(--pink); background: rgba(224,106,147,.12); }
+.kp-seg button.on[data-source="cash"] { border-color: var(--green); color: var(--green); background: rgba(85,201,154,.12); }
+/* rubros: pastillas delineadas ámbar, sin relleno, para no confundirse
+   con los bloques de fuente de pago de arriba */
 .kp-cats { display: flex; gap: 8px; }
 .kp-cats .catbtn {
-  flex: 1; background: var(--card2); border: 1px solid var(--line); border-radius: 999px;
+  flex: 1; background: transparent; border: 1px solid rgba(239,161,59,.35); border-radius: 999px;
   color: var(--muted); font-size: 14px; padding: 9px 8px; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.kp-cats .catbtn.on { border-color: var(--amber); color: var(--amber); background: transparent; }
+.kp-cats .catbtn.on { border-color: var(--amber); color: var(--amber); background: rgba(239,161,59,.12); }
 .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: 1; align-content: end; }
 .keys button {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -223,6 +231,18 @@ input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px;
 .histlist .hnums .v { font-variant-numeric: tabular-nums; }
 .histlist .hsaved { font-size: 12px; color: var(--green); font-variant-numeric: tabular-nums; }
 .histlist .hsaved.neg { color: var(--red); }
+
+/* ---- gráficas ---- */
+.chartcard {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px; margin: 10px 0; overflow-x: auto;
+}
+.chart { display: block; max-width: 100%; height: auto; }
+.chart .cval { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.chart .clab { fill: var(--faint); font-size: 9px; }
+.chart .axis { stroke: var(--line); stroke-width: 1; }
+.chart-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.export { display: block; text-align: center; margin: 18px 0 6px; }
 
 /* ---- nav ---- */
 .tabs {

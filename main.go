@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS cycles (
 CREATE TABLE IF NOT EXISTS transactions (
     id          serial PRIMARY KEY,
     cycle_id    int NOT NULL REFERENCES cycles(id) ON DELETE CASCADE,
-    kind        text NOT NULL CHECK (kind IN ('card','cash','withdrawal','income','fixed')),
+    kind        text NOT NULL CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay')),
     template_id int REFERENCES templates(id) ON DELETE SET NULL,
     amount      bigint NOT NULL,
     concept     text NOT NULL DEFAULT '',
@@ -67,6 +67,11 @@ CREATE INDEX IF NOT EXISTS transactions_cycle_idx ON transactions (cycle_id, kin
 -- migración para bases existentes: rubros (comida, libros, alcohol)
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS transactions_cat_idx ON transactions (cycle_id, category);
+-- migración para bases existentes: nuevo tipo 'cardpay' (pago de la tarjeta
+-- de crédito, no cuenta como gasto). Se recrea el CHECK con la lista completa.
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_kind_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_kind_check
+    CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay'));
 
 CREATE TABLE IF NOT EXISTS sessions (
     token      text PRIMARY KEY,
@@ -136,6 +141,7 @@ func main() {
 	mux.HandleFunc("GET /fijos", app.requireAuth(app.fixedPage))
 	mux.HandleFunc("GET /mes", app.requireAuth(app.monthPage))
 	mux.HandleFunc("GET /reportes", app.requireAuth(app.reportsPage))
+	mux.HandleFunc("GET /export.csv", app.requireAuth(app.exportCSV))
 	mux.HandleFunc("GET /ajustes", app.requireAuth(app.settingsPage))
 	mux.HandleFunc("GET /tx/{id}", app.requireAuth(app.txEditPage))
 

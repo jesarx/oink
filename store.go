@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"html/template"
 	"strings"
 	"time"
 )
@@ -96,6 +97,8 @@ type Dashboard struct {
 	Variable     int64 // tarjeta + retiros
 	CardTotal    int64
 	CreditTotal  int64
+	DebitTotal   int64
+	CreditDebt   int64 // crédito cargado y aún no pagado (todos los ciclos)
 	Available    int64
 	Daily        int64
 	DaysLeft     int
@@ -170,6 +173,8 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	d.FixedPaid = a.sumTx(c.ID, `kind = 'fixed'`)
 	d.CardTotal = a.sumTx(c.ID, `kind = 'card'`)
 	d.CreditTotal = a.sumTx(c.ID, `kind = 'card' AND credit`)
+	d.DebitTotal = d.CardTotal - d.CreditTotal
+	d.CreditDebt = a.creditDebt()
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
 	d.Variable = d.CardTotal + withdrawals
 
@@ -256,6 +261,49 @@ func (a *App) listTemplates(kind string, cycleID int) ([]Template, error) {
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// creditDebt calcula la deuda viva de la tarjeta de crédito: todo lo cargado
+// a crédito menos todos los pagos de tarjeta, a través de todos los ciclos.
+func (a *App) creditDebt() int64 {
+	var v sql.NullInt64
+	a.db.QueryRow(`SELECT COALESCE(SUM(CASE
+			WHEN kind = 'card' AND credit THEN amount
+			WHEN kind = 'cardpay' THEN -amount
+			ELSE 0 END), 0) FROM transactions`).Scan(&v)
+	return v.Int64
+}
+
+// categorySeries regresa, por rubro, los totales alineados con cycleIDs
+// (para las gráficas de avance mensual).
+func (a *App) categorySeries(cycleIDs []int) map[string][]int64 {
+	idx := make(map[int]int, len(cycleIDs))
+	for i, id := range cycleIDs {
+		idx[id] = i
+	}
+	out := make(map[string][]int64, len(categories))
+	for _, c := range categories {
+		out[c.Key] = make([]int64, len(cycleIDs))
+	}
+	rows, err := a.db.Query(`SELECT cycle_id, category, SUM(amount)
+		FROM transactions WHERE category <> '' GROUP BY cycle_id, category`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var cat string
+		var amt int64
+		if rows.Scan(&cid, &cat, &amt) == nil {
+			if i, ok := idx[cid]; ok {
+				if s, ok := out[cat]; ok {
+					s[i] = amt
+				}
+			}
+		}
+	}
+	return out
 }
 
 // listExtraIncomes regresa las entradas no fijas (sin plantilla) del ciclo.
@@ -443,6 +491,55 @@ func fmtCycle(c Cycle) string {
 // fmtMonth: "julio 2026" a partir de una fecha (para encabezados de reportes).
 func fmtMonth(t time.Time) string {
 	return fmt.Sprintf("%s %d", spanishMonths[int(t.Month())], t.Year())
+}
+
+// compactMoney abrevia montos para etiquetas de gráfica: "$850", "$8.2k".
+func compactMoney(cents int64) string {
+	pesos := cents / 100
+	switch {
+	case pesos >= 10000:
+		return fmt.Sprintf("$%.0fk", float64(pesos)/1000)
+	case pesos >= 1000:
+		return fmt.Sprintf("$%.1fk", float64(pesos)/1000)
+	}
+	return fmt.Sprintf("$%d", pesos)
+}
+
+// barSVG genera una gráfica de barras en SVG (sin JS ni libs externas,
+// compatible con la CSP). El texto se estiliza desde style.css.
+func barSVG(labels []string, vals []int64, color string) template.HTML {
+	n := len(vals)
+	if n == 0 {
+		return ""
+	}
+	const bw, gap, padX, chartH, topPad, labelH = 34, 10, 6, 110, 16, 16
+	w := padX*2 + n*bw + (n-1)*gap
+	h := topPad + chartH + labelH
+	var max int64 = 1
+	for _, v := range vals {
+		if v > max {
+			max = v
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg width="%d" height="%d" viewBox="0 0 %d %d" class="chart" role="img">`, w, h, w, h)
+	fmt.Fprintf(&b, `<line x1="0" y1="%d" x2="%d" y2="%d" class="axis"/>`, topPad+chartH, w, topPad+chartH)
+	for i, v := range vals {
+		x := padX + i*(bw+gap)
+		bh := int(int64(chartH) * v / max)
+		if v > 0 && bh < 3 {
+			bh = 3
+		}
+		y := topPad + chartH - bh
+		if v > 0 {
+			fmt.Fprintf(&b, `<rect x="%d" y="%d" width="%d" height="%d" rx="4" fill="%s"/>`, x, y, bw, bh, color)
+			fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" class="cval">%s</text>`, x+bw/2, y-4, compactMoney(v))
+		}
+		fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="middle" class="clab">%s</text>`,
+			x+bw/2, topPad+chartH+12, template.HTMLEscapeString(labels[i]))
+	}
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String())
 }
 
 // parseMoney convierte "1234.56" o "1,234" a centavos.
