@@ -2,6 +2,8 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -40,11 +42,13 @@ func (a *App) parseTemplates() {
 			switch k {
 			case "card":
 				if credit {
-					return "Tarjeta · crédito"
+					return "T. crédito"
 				}
-				return "Tarjeta · débito"
+				return "T. débito"
 			case "cash":
 				return "Efectivo"
+			case "cardpay":
+				return "Pago t. crédito"
 			case "withdrawal":
 				return "Retiro de cajero"
 			case "income":
@@ -96,7 +100,7 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 	kind := r.FormValue("kind")
-	if kind != "card" && kind != "cash" && kind != "withdrawal" {
+	if kind != "card" && kind != "cash" && kind != "withdrawal" && kind != "cardpay" {
 		http.Error(w, "tipo inválido", 400)
 		return
 	}
@@ -110,8 +114,8 @@ func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rubro inválido", 400)
 		return
 	}
-	if kind == "withdrawal" {
-		category = "" // un retiro de cajero no es un gasto de rubro
+	if kind == "withdrawal" || kind == "cardpay" {
+		category = "" // ni retiros ni pagos de tarjeta son gastos de rubro
 	}
 	c, err := a.openCycle()
 	if err != nil {
@@ -162,11 +166,36 @@ func (a *App) txUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	concept := strings.TrimSpace(r.FormValue("concept"))
-	credit := r.FormValue("credit") == "on"
-	_, err = a.db.Exec(`UPDATE transactions SET amount=$1, concept=$2, made_on=$3,
-		credit = CASE WHEN kind='card' THEN $4 ELSE credit END,
-		category = CASE WHEN kind IN ('card','cash') THEN $5 ELSE category END WHERE id=$6`,
-		amount, concept, madeOn, credit, category, id)
+
+	var kind string
+	var credit bool
+	if err := a.db.QueryRow(`SELECT kind, credit FROM transactions WHERE id=$1`, id).
+		Scan(&kind, &credit); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if kind == "card" || kind == "cash" {
+		// la fuente puede cambiarse entre t. débito, t. crédito y efectivo
+		switch r.FormValue("source") {
+		case "debit":
+			kind, credit = "card", false
+		case "credit":
+			kind, credit = "card", true
+		case "cash":
+			kind, credit = "cash", false
+		case "":
+			// sin cambio
+		default:
+			http.Error(w, "fuente inválida", 400)
+			return
+		}
+		_, err = a.db.Exec(`UPDATE transactions SET amount=$1, concept=$2, made_on=$3,
+			kind=$4, credit=$5, category=$6 WHERE id=$7`,
+			amount, concept, madeOn, kind, credit, category, id)
+	} else {
+		_, err = a.db.Exec(`UPDATE transactions SET amount=$1, concept=$2, made_on=$3 WHERE id=$4`,
+			amount, concept, madeOn, id)
+	}
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -415,13 +444,14 @@ func (a *App) monthPage(w http.ResponseWriter, r *http.Request) {
 	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
 	cash := a.sumTx(c.ID, `kind = 'cash'`)
+	cardPay := a.sumTx(c.ID, `kind = 'cardpay'`)
 	saved := incomes - fixed - card - withdrawals
 
 	a.render(w, "month.html", map[string]any{
 		"Nav": "mes", "C": c, "Txs": txs, "IsCurrent": c.ID == cur.ID,
 		"Prev": prev, "Next": next,
-		"Incomes": incomes, "Fixed": fixed, "Card": card, "CreditCard": creditCard,
-		"Withdrawals": withdrawals, "Cash": cash, "Saved": saved,
+		"Incomes": incomes, "Fixed": fixed, "Debit": card - creditCard, "CreditCard": creditCard,
+		"Withdrawals": withdrawals, "Cash": cash, "CardPay": cardPay, "Saved": saved,
 	})
 }
 
@@ -451,7 +481,9 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 	incomes := a.sumTx(c.ID, `kind = 'income'`)
 	fixed := a.sumTx(c.ID, `kind = 'fixed'`)
 	card := a.sumTx(c.ID, `kind = 'card'`)
+	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
+	cardPay := a.sumTx(c.ID, `kind = 'cardpay'`)
 	spent := fixed + card + withdrawals
 	saved := incomes - spent
 
@@ -462,14 +494,95 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// series cronológicas (viejo -> nuevo) para las gráficas
+	chron := make([]CycleStat, len(history))
+	for i, h := range history {
+		chron[len(history)-1-i] = h
+	}
+	labels := make([]string, len(chron))
+	spentVals := make([]int64, len(chron))
+	ids := make([]int, len(chron))
+	for i, h := range chron {
+		labels[i] = fmtDate(h.StartedOn)
+		spentVals[i] = h.Spent
+		ids[i] = h.ID
+	}
+	catSeries := a.categorySeries(ids)
+	catColors := map[string]string{"comida": "#6fa8e8", "libros": "#55c99a", "alcohol": "#efa13b"}
+	type catChart struct {
+		Label string
+		SVG   template.HTML
+	}
+	var catCharts []catChart
+	for _, cc := range categories {
+		catCharts = append(catCharts, catChart{cc.Label, barSVG(labels, catSeries[cc.Key], catColors[cc.Key])})
+	}
+
 	a.render(w, "reportes.html", map[string]any{
 		"Nav": "reportes", "C": c, "IsCurrent": c.ID == cur.ID,
 		"Prev": prev, "Next": next,
-		"Incomes": incomes, "Fixed": fixed, "Card": card, "Withdrawals": withdrawals,
+		"Incomes": incomes, "Fixed": fixed, "Debit": card - creditCard, "CreditCard": creditCard,
+		"Withdrawals": withdrawals, "CardPay": cardPay,
 		"Spent": spent, "Saved": saved,
-		"Cats":     a.categoryTotals(c.ID),
-		"Concepts": concepts, "ConceptTotal": conceptTotal, "History": history,
+		"Cats":       a.categoryTotals(c.ID),
+		"Concepts":   concepts, "ConceptTotal": conceptTotal, "History": history,
+		"SpentChart": barSVG(labels, spentVals, "#e06a93"),
+		"CatCharts":  catCharts,
 	})
+}
+
+// exportCSV descarga todos los movimientos de todos los ciclos.
+func (a *App) exportCSV(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query(`
+		SELECT x.made_on, c.started_on, x.kind, x.credit, x.category, x.concept, x.amount
+		FROM transactions x JOIN cycles c ON c.id = x.cycle_id
+		ORDER BY x.made_on, x.id`)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	defer rows.Close()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="oink.csv"`)
+	w.Write([]byte("\xEF\xBB\xBF")) // BOM para que Excel abra UTF-8 bien
+	cw := csv.NewWriter(w)
+	cw.Write([]string{"fecha", "inicio_ciclo", "tipo", "rubro", "concepto", "monto"})
+	for rows.Next() {
+		var made, started time.Time
+		var kind, category, concept string
+		var credit bool
+		var amount int64
+		if rows.Scan(&made, &started, &kind, &credit, &category, &concept, &amount) != nil {
+			continue
+		}
+		cw.Write([]string{
+			made.Format("2006-01-02"), started.Format("2006-01-02"),
+			csvKind(kind, credit), category, concept,
+			fmt.Sprintf("%d.%02d", amount/100, amount%100),
+		})
+	}
+	cw.Flush()
+}
+
+func csvKind(k string, credit bool) string {
+	switch k {
+	case "card":
+		if credit {
+			return "t_credito"
+		}
+		return "t_debito"
+	case "cash":
+		return "efectivo"
+	case "withdrawal":
+		return "retiro"
+	case "income":
+		return "entrada"
+	case "fixed":
+		return "gasto_fijo"
+	case "cardpay":
+		return "pago_tarjeta"
+	}
+	return k
 }
 
 // ---- ajustes ----

@@ -28,10 +28,21 @@
 <h2 class="sec">Resumen</h2>
 <section class="summary">
   <div class="cell"><span class="k">Fijos</span><span class="v">{{money .Fixed}}</span></div>
-  <div class="cell"><span class="k">Tarjeta</span><span class="v">{{money .Card}}</span></div>
+  <div class="cell"><span class="k">T. débito</span><span class="v">{{money .Debit}}</span></div>
+  <div class="cell"><span class="k">T. crédito</span><span class="v">{{money .CreditCard}}</span></div>
   <div class="cell"><span class="k">Efectivo (retiros)</span><span class="v">{{money .Withdrawals}}</span></div>
+  {{if gt .CardPay 0}}<div class="cell"><span class="k">Pagos de tarjeta (no son gasto)</span><span class="v">{{money .CardPay}}</span></div>{{end}}
   <div class="cell hi"><span class="k">Ahorro del mes</span><span class="v">{{money .Saved}}</span></div>
 </section>
+
+<h2 class="sec">Gasto total por mes</h2>
+<div class="chartcard">{{.SpentChart}}</div>
+
+<h2 class="sec">Rubros por mes</h2>
+<p class="muted small subsec">Tu avance en los rubros que quieres reducir: si las barras bajan, vas bien.</p>
+{{range .CatCharts}}
+<div class="chartcard"><h3 class="chart-title">{{.Label}}</h3>{{.SVG}}</div>
+{{end}}
 
 <h2 class="sec">¿En qué gastaste?</h2>
 <p class="muted small subsec">Tarjeta, efectivo y fijos agrupados por concepto.</p>
@@ -70,4 +81,6 @@
 {{else}}
 <p class="empty">Aún no hay meses para comparar.</p>
 {{end}}
+
+<a class="btn ghost export" href="/export.csv" download>Exportar todo a CSV</a>
 {{end}}

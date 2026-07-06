@@ -20,23 +20,29 @@
 </section>
 
 <section class="split">
-  <button class="pad card-pad" data-open="card">
-    <span class="k">Tarjeta</span>
-    <span class="v">{{money .D.CardTotal}}</span>
-    <span class="hint">gastado en el ciclo</span>
+  <button class="pad" data-open="debit">
+    <span class="k">T. Débito</span>
+    <span class="v">{{money .D.DebitTotal}}</span>
+    <span class="hint">en el ciclo</span>
     <span class="plus blue">+</span>
   </button>
-  <button class="pad cash-pad" data-open="cash">
+  <button class="pad" data-open="credit">
+    <span class="k">T. Crédito</span>
+    <span class="v">{{money .D.CreditTotal}}</span>
+    <span class="hint">en el ciclo</span>
+    <span class="plus pink">+</span>
+  </button>
+  <button class="pad" data-open="cash">
     <span class="k">Efectivo</span>
     <span class="v {{if lt .D.Envelope 0}}neg{{end}}">{{money .D.Envelope}}</span>
-    <span class="hint">en el sobre semanal</span>
+    <span class="hint">sobre semanal</span>
     <span class="plus green">+</span>
   </button>
 </section>
 
 <section class="quickcats">
   {{range .Cats}}
-  <button class="qcat" data-open="card" data-cat="{{.Key}}">
+  <button class="qcat" data-open="credit" data-cat="{{.Key}}">
     <span class="qc-label">{{.Label}}</span>
     <span class="qc-amt">{{money .Amount}}</span>
   </button>
@@ -51,6 +57,14 @@
   <button class="btn ghost" data-open="withdrawal" data-amount="{{.S.WeeklyCash}}">Retiré efectivo</button>
 </section>
 
+<section class="row envelope">
+  <div>
+    <p>Tarjeta de crédito</p>
+    <p class="muted small">deuda acumulada: {{money .D.CreditDebt}} · pagarla no cuenta como gasto</p>
+  </div>
+  <button class="btn ghost" data-open="cardpay" data-amount="{{.D.CreditDebt}}">Pagué la tarjeta</button>
+</section>
+
 {{if .D.PendingFixed}}
 <a class="row link" href="/fijos">
   <p>{{.D.PendingFixed}} gasto{{if gt .D.PendingFixed 1}}s{{end}} fijo{{if gt .D.PendingFixed 1}}s{{end}} por pagar este mes</p>
@@ -63,15 +77,17 @@
     <input type="hidden" name="kind" id="kp-kind">
     <input type="hidden" name="amount" id="kp-amount">
     <input type="hidden" name="category" id="kp-category">
+    <input type="hidden" name="credit" id="kp-credit" value="off">
     <header class="kp-head">
       <button type="button" class="x" data-close aria-label="Cerrar">×</button>
       <span id="kp-title">Gasto</span>
-      <label id="kp-credit" class="toggle"><input type="checkbox" name="credit" checked> crédito</label>
+      <span></span>
     </header>
     <p class="kp-display" id="kp-display">$0</p>
     <div class="kp-seg" id="kp-seg" hidden>
-      <button type="button" data-kind="card">Tarjeta</button>
-      <button type="button" data-kind="cash">Efectivo</button>
+      <button type="button" data-source="debit">T. Débito</button>
+      <button type="button" data-source="credit">T. Crédito</button>
+      <button type="button" data-source="cash">Efectivo</button>
     </div>
     <div class="kp-cats" id="kp-cats" hidden>
       {{range .Cats}}<button type="button" class="catbtn" data-cat="{{.Key}}">{{.Label}}</button>{{end}}

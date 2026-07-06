@@ -8,9 +8,10 @@
 <section class="summary">
   <div class="cell"><span class="k">Entradas</span><span class="v">{{money .Incomes}}</span></div>
   <div class="cell"><span class="k">Fijos pagados</span><span class="v">{{money .Fixed}}</span></div>
-  <div class="cell"><span class="k">Tarjeta</span><span class="v">{{money .Card}}</span></div>
-  <div class="cell"><span class="k">— de crédito</span><span class="v">{{money .CreditCard}}</span></div>
+  <div class="cell"><span class="k">T. débito</span><span class="v">{{money .Debit}}</span></div>
+  <div class="cell"><span class="k">T. crédito</span><span class="v">{{money .CreditCard}}</span></div>
   <div class="cell"><span class="k">Retiros (efectivo)</span><span class="v">{{money .Withdrawals}}</span></div>
+  {{if gt .CardPay 0}}<div class="cell"><span class="k">Pago de tarjeta (no es gasto)</span><span class="v">{{money .CardPay}}</span></div>{{end}}
   <div class="cell hi"><span class="k">{{if .IsCurrent}}Ahorro si ya no gastas{{else}}Ahorro del mes{{end}}</span><span class="v">{{money .Saved}}</span></div>
 </section>
 
@@ -24,7 +25,7 @@
         {{if .Concept}}{{.Concept}}{{else}}<em>sin concepto</em>{{end}}
         <span class="muted small">{{kindLabel .Kind .Credit}}{{if .Category}} · {{catLabel .Category}}{{end}}</span>
       </span>
-      <span class="amount {{if eq .Kind "income"}}pos{{end}}">{{if eq .Kind "income"}}+{{end}}{{money .Amount}}</span>
+      <span class="amount {{if eq .Kind "income"}}pos{{end}}{{if eq .Kind "cardpay"}} pay{{end}}">{{if eq .Kind "income"}}+{{end}}{{money .Amount}}</span>
     </a>
   </li>
 {{end}}
