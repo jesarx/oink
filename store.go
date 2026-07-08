@@ -68,6 +68,16 @@ type CategoryStat struct {
 	Pct    int // ancho de barra, relativo al rubro más grande
 }
 
+// categoryTotals suma lo gastado por rubro en el ciclo (para el home).
+func (a *App) categoryTotals(cycleID int) []CategoryStat {
+	out := make([]CategoryStat, 0, len(categories))
+	for _, c := range categories {
+		out = append(out, CategoryStat{Key: c.Key, Label: c.Label,
+			Amount: a.sumTx(cycleID, `category = $2`, c.Key)})
+	}
+	return out
+}
+
 // CatDetail es un rubro con su total y la lista de gastos del periodo,
 // para el desglose expandible de reportes.
 type CatDetail struct {
