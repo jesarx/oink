@@ -37,6 +37,7 @@ type Tx struct {
 	Concept  string
 	Category string
 	Credit   bool
+	Cash     bool // entradas: llegó en efectivo (va al sobre semanal)
 	MadeOn   time.Time
 	TplName  sql.NullString
 }
@@ -67,22 +68,36 @@ type CategoryStat struct {
 	Pct    int // ancho de barra, relativo al rubro más grande
 }
 
-// categoryTotals suma lo gastado en cada rubro vigilado dentro del ciclo.
-func (a *App) categoryTotals(cycleID int) []CategoryStat {
-	out := make([]CategoryStat, 0, len(categories))
+// CatDetail es un rubro con su total y la lista de gastos del periodo,
+// para el desglose expandible de reportes.
+type CatDetail struct {
+	Stat CategoryStat
+	Txs  []Tx
+}
+
+// categoryDetails arma total + movimientos de cada rubro vigilado dentro
+// del periodo definido por where (columnas con prefijo x., ej. x.cycle_id = $1).
+func (a *App) categoryDetails(where string, args ...any) []CatDetail {
+	out := make([]CatDetail, 0, len(categories))
 	var max int64
+	n := len(args) + 1
 	for _, c := range categories {
-		amt := a.sumTx(cycleID, `category = $2`, c.Key)
-		out = append(out, CategoryStat{Key: c.Key, Label: c.Label, Amount: amt})
-		if amt > max {
-			max = amt
+		txs, _ := a.listTxWhere(fmt.Sprintf("%s AND x.category = $%d", where, n),
+			append(append([]any{}, args...), c.Key)...)
+		var sum int64
+		for _, t := range txs {
+			sum += t.Amount
+		}
+		out = append(out, CatDetail{Stat: CategoryStat{Key: c.Key, Label: c.Label, Amount: sum}, Txs: txs})
+		if sum > max {
+			max = sum
 		}
 	}
 	if max > 0 {
 		for i := range out {
-			out[i].Pct = int(out[i].Amount * 100 / max)
-			if out[i].Pct < 4 && out[i].Amount > 0 {
-				out[i].Pct = 4
+			out[i].Stat.Pct = int(out[i].Stat.Amount * 100 / max)
+			if out[i].Stat.Pct < 4 && out[i].Stat.Amount > 0 {
+				out[i].Stat.Pct = 4
 			}
 		}
 	}
@@ -151,10 +166,13 @@ func (a *App) rolloverCycle() (Cycle, error) {
 }
 
 func (a *App) sumTx(cycleID int, where string, args ...any) int64 {
+	return a.sumWhere(`cycle_id = $1 AND `+where, append([]any{cycleID}, args...)...)
+}
+
+// sumWhere suma montos sin acotar a un ciclo (p. ej. rangos de fechas).
+func (a *App) sumWhere(where string, args ...any) int64 {
 	var v sql.NullInt64
-	q := `SELECT COALESCE(SUM(amount),0) FROM transactions WHERE cycle_id = $1 AND ` + where
-	all := append([]any{cycleID}, args...)
-	a.db.QueryRow(q, all...).Scan(&v)
+	a.db.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM transactions WHERE `+where, args...).Scan(&v)
 	return v.Int64
 }
 
@@ -189,7 +207,10 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 		c.ID).Scan(&pending, &d.PendingFixed)
 	d.FixedPending = pending.Int64
 
-	d.Available = d.Incomes - s.SavingsGoal - d.FixedPaid - d.FixedPending - d.Variable
+	// las entradas en efectivo van al sobre, no al banco: se muestran en
+	// Incomes pero no engordan el disponible bancario
+	cashIn := a.sumTx(c.ID, `kind = 'income' AND cash`)
+	d.Available = d.Incomes - cashIn - s.SavingsGoal - d.FixedPaid - d.FixedPending - d.Variable
 
 	today := a.today()
 	d.DaysElapsed = int(today.Sub(c.StartedOn).Hours()/24) + 1
@@ -203,7 +224,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	}
 
 	// ritmo: fracción de presupuesto variable gastada vs fracción de tiempo transcurrida
-	budget := d.Incomes - s.SavingsGoal - d.FixedPaid - d.FixedPending
+	budget := d.Incomes - cashIn - s.SavingsGoal - d.FixedPaid - d.FixedPending
 	totalDays := d.DaysElapsed + d.DaysLeft - 1
 	if totalDays < 1 {
 		totalDays = 1
@@ -230,7 +251,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 
 	// sobre semanal: semana lunes-domingo
 	weekStart := today.AddDate(0, 0, -int((today.Weekday()+6)%7))
-	d.EnvelopeIn = a.sumTx(c.ID, `kind = 'withdrawal' AND made_on >= $2`, weekStart)
+	d.EnvelopeIn = a.sumTx(c.ID, `(kind = 'withdrawal' OR (kind = 'income' AND cash)) AND made_on >= $2`, weekStart)
 	cashSpent := a.sumTx(c.ID, `kind = 'cash' AND made_on >= $2`, weekStart)
 	d.Envelope = d.EnvelopeIn - cashSpent
 
@@ -309,7 +330,7 @@ func (a *App) categorySeries(cycleIDs []int) map[string][]int64 {
 // listExtraIncomes regresa las entradas no fijas (sin plantilla) del ciclo.
 func (a *App) listExtraIncomes(cycleID int) ([]Tx, error) {
 	rows, err := a.db.Query(`
-		SELECT id, amount, concept, made_on
+		SELECT id, amount, concept, cash, made_on
 		FROM transactions
 		WHERE cycle_id = $1 AND kind = 'income' AND template_id IS NULL
 		ORDER BY made_on DESC, id DESC`, cycleID)
@@ -320,7 +341,7 @@ func (a *App) listExtraIncomes(cycleID int) ([]Tx, error) {
 	var out []Tx
 	for rows.Next() {
 		t := Tx{Kind: "income"}
-		if err := rows.Scan(&t.ID, &t.Amount, &t.Concept, &t.MadeOn); err != nil {
+		if err := rows.Scan(&t.ID, &t.Amount, &t.Concept, &t.Cash, &t.MadeOn); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -329,11 +350,15 @@ func (a *App) listExtraIncomes(cycleID int) ([]Tx, error) {
 }
 
 func (a *App) listTx(cycleID int) ([]Tx, error) {
+	return a.listTxWhere(`x.cycle_id = $1`, cycleID)
+}
+
+func (a *App) listTxWhere(where string, args ...any) ([]Tx, error) {
 	rows, err := a.db.Query(`
-		SELECT x.id, x.kind, x.amount, x.concept, x.category, x.credit, x.made_on, t.name
+		SELECT x.id, x.kind, x.amount, x.concept, x.category, x.credit, x.cash, x.made_on, t.name
 		FROM transactions x LEFT JOIN templates t ON t.id = x.template_id
-		WHERE x.cycle_id = $1
-		ORDER BY x.made_on DESC, x.id DESC`, cycleID)
+		WHERE `+where+`
+		ORDER BY x.made_on DESC, x.id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +366,7 @@ func (a *App) listTx(cycleID int) ([]Tx, error) {
 	var out []Tx
 	for rows.Next() {
 		var t Tx
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Category, &t.Credit, &t.MadeOn, &t.TplName); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Category, &t.Credit, &t.Cash, &t.MadeOn, &t.TplName); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -396,12 +421,13 @@ func (a *App) conceptBreakdown(cycleID int) ([]ConceptStat, int64) {
 }
 
 type CycleStat struct {
-	ID        int
-	StartedOn time.Time
-	ClosedOn  sql.NullTime
-	Income    int64
-	Spent     int64 // fijos + tarjeta + retiros (salida real del banco)
-	Saved     int64
+	ID         int
+	StartedOn  time.Time
+	ClosedOn   sql.NullTime
+	Income     int64
+	CashIncome int64 // entradas en efectivo (fueron al sobre, no al banco)
+	Spent      int64 // fijos + tarjeta + retiros (salida real del banco)
+	Saved      int64
 }
 
 // cycleHistory regresa los últimos ciclos con sus totales, para comparar meses.
@@ -409,6 +435,7 @@ func (a *App) cycleHistory(limit int) ([]CycleStat, error) {
 	rows, err := a.db.Query(`
 		SELECT c.id, c.started_on, c.closed_on,
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income'), 0),
+		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income' AND x.cash), 0),
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind IN ('fixed','card','withdrawal')), 0)
 		FROM cycles c
 		LEFT JOIN transactions x ON x.cycle_id = c.id
@@ -422,10 +449,10 @@ func (a *App) cycleHistory(limit int) ([]CycleStat, error) {
 	var out []CycleStat
 	for rows.Next() {
 		var s CycleStat
-		if err := rows.Scan(&s.ID, &s.StartedOn, &s.ClosedOn, &s.Income, &s.Spent); err != nil {
+		if err := rows.Scan(&s.ID, &s.StartedOn, &s.ClosedOn, &s.Income, &s.CashIncome, &s.Spent); err != nil {
 			return nil, err
 		}
-		s.Saved = s.Income - s.Spent
+		s.Saved = s.Income - s.CashIncome - s.Spent
 		out = append(out, s)
 	}
 	return out, rows.Err()

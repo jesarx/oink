@@ -53,7 +53,7 @@
       <span class="date">{{date .MadeOn}}</span>
       <span class="what">
         {{if .Concept}}{{.Concept}}{{else}}<em>sin descripción</em>{{end}}
-        <span class="muted small">Entrada no fija</span>
+        <span class="muted small">Entrada no fija{{if .Cash}} · en efectivo (al sobre){{end}}</span>
       </span>
       <span class="amount pos">+{{money .Amount}}</span>
     </a>
@@ -69,6 +69,10 @@
   <form method="post" action="/income/add" class="edit">
     <input type="text" name="concept" placeholder="Descripción (ej. Freelance, venta)" maxlength="80" required>
     <input type="text" name="amount" inputmode="decimal" placeholder="Monto" required>
+    <select name="via">
+      <option value="banco">Al banco / tarjeta</option>
+      <option value="efectivo">En efectivo (va al sobre)</option>
+    </select>
     <button class="btn primary">Agregar al mes</button>
   </form>
 </details>
