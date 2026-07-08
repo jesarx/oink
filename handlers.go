@@ -90,7 +90,7 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 	}
 	a.render(w, "home.html", map[string]any{
 		"Nav": "home", "D": d, "S": s,
-		"Cats":         a.categoryTotals(d.Cycle.ID),
+		"Cats":         categories,
 		"CardConcepts": a.recentConcepts("card"),
 		"CashConcepts": a.recentConcepts("cash"),
 	})
@@ -136,9 +136,9 @@ func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 func (a *App) txEditPage(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(r.PathValue("id"))
 	var t Tx
-	err := a.db.QueryRow(`SELECT x.id, x.kind, x.amount, x.concept, x.category, x.credit, x.made_on, t.name
+	err := a.db.QueryRow(`SELECT x.id, x.kind, x.amount, x.concept, x.category, x.credit, x.cash, x.made_on, t.name
 		FROM transactions x LEFT JOIN templates t ON t.id = x.template_id WHERE x.id = $1`, id).
-		Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Category, &t.Credit, &t.MadeOn, &t.TplName)
+		Scan(&t.ID, &t.Kind, &t.Amount, &t.Concept, &t.Category, &t.Credit, &t.Cash, &t.MadeOn, &t.TplName)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -168,13 +168,28 @@ func (a *App) txUpdate(w http.ResponseWriter, r *http.Request) {
 	concept := strings.TrimSpace(r.FormValue("concept"))
 
 	var kind string
-	var credit bool
-	if err := a.db.QueryRow(`SELECT kind, credit FROM transactions WHERE id=$1`, id).
-		Scan(&kind, &credit); err != nil {
+	var credit, cash bool
+	if err := a.db.QueryRow(`SELECT kind, credit, cash FROM transactions WHERE id=$1`, id).
+		Scan(&kind, &credit, &cash); err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	if kind == "card" || kind == "cash" {
+	if kind == "income" {
+		// una entrada puede corregirse entre banco y efectivo (sobre)
+		switch r.FormValue("via") {
+		case "banco":
+			cash = false
+		case "efectivo":
+			cash = true
+		case "":
+			// sin cambio
+		default:
+			http.Error(w, "fuente inválida", 400)
+			return
+		}
+		_, err = a.db.Exec(`UPDATE transactions SET amount=$1, concept=$2, made_on=$3, cash=$4 WHERE id=$5`,
+			amount, concept, madeOn, cash, id)
+	} else if kind == "card" || kind == "cash" {
 		// la fuente puede cambiarse entre t. débito, t. crédito y efectivo
 		switch r.FormValue("source") {
 		case "debit":
@@ -239,13 +254,14 @@ func (a *App) incomeAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "datos inválidos", 400)
 		return
 	}
+	cash := r.FormValue("via") == "efectivo"
 	c, err := a.openCycle()
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
-	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, made_on)
-		VALUES ($1,'income',$2,$3,$4)`, c.ID, amount, concept, a.today())
+	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, cash, made_on)
+		VALUES ($1,'income',$2,$3,$4,$5)`, c.ID, amount, concept, cash, a.today())
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -445,19 +461,31 @@ func (a *App) monthPage(w http.ResponseWriter, r *http.Request) {
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
 	cash := a.sumTx(c.ID, `kind = 'cash'`)
 	cardPay := a.sumTx(c.ID, `kind = 'cardpay'`)
-	saved := incomes - fixed - card - withdrawals
+	cashIn := a.sumTx(c.ID, `kind = 'income' AND cash`)
+	saved := incomes - cashIn - fixed - card - withdrawals
 
 	a.render(w, "month.html", map[string]any{
 		"Nav": "mes", "C": c, "Txs": txs, "IsCurrent": c.ID == cur.ID,
 		"Prev": prev, "Next": next,
 		"Incomes": incomes, "Fixed": fixed, "Debit": card - creditCard, "CreditCard": creditCard,
-		"Withdrawals": withdrawals, "Cash": cash, "CardPay": cardPay, "Saved": saved,
+		"Withdrawals": withdrawals, "Cash": cash, "CardPay": cardPay, "CashIn": cashIn, "Saved": saved,
 	})
 }
 
 // ---- reportes ----
 
 func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Query().Get("v") {
+	case "semana":
+		a.reportsWeek(w, r)
+	case "graficas":
+		a.reportsCharts(w, r)
+	default:
+		a.reportsMonth(w, r)
+	}
+}
+
+func (a *App) reportsMonth(w http.ResponseWriter, r *http.Request) {
 	cur, err := a.openCycle()
 	if err != nil {
 		a.fail(w, err)
@@ -479,13 +507,14 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 		c.StartedOn, c.ID).Scan(&next)
 
 	incomes := a.sumTx(c.ID, `kind = 'income'`)
+	cashIn := a.sumTx(c.ID, `kind = 'income' AND cash`)
 	fixed := a.sumTx(c.ID, `kind = 'fixed'`)
 	card := a.sumTx(c.ID, `kind = 'card'`)
 	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
 	cardPay := a.sumTx(c.ID, `kind = 'cardpay'`)
 	spent := fixed + card + withdrawals
-	saved := incomes - spent
+	saved := incomes - cashIn - spent
 
 	concepts, conceptTotal := a.conceptBreakdown(c.ID)
 	history, err := a.cycleHistory(12)
@@ -494,7 +523,49 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// series cronológicas (viejo -> nuevo) para las gráficas
+	a.render(w, "reportes.html", map[string]any{
+		"Nav": "reportes", "View": "mes", "C": c, "IsCurrent": c.ID == cur.ID,
+		"Prev": prev, "Next": next,
+		"Incomes": incomes, "CashIn": cashIn, "Fixed": fixed, "Debit": card - creditCard,
+		"CreditCard": creditCard, "Withdrawals": withdrawals, "CardPay": cardPay,
+		"Spent": spent, "Saved": saved,
+		"CatsD":    a.categoryDetails(`x.cycle_id = $1`, c.ID),
+		"Concepts": concepts, "ConceptTotal": conceptTotal, "History": history,
+	})
+}
+
+func (a *App) reportsWeek(w http.ResponseWriter, r *http.Request) {
+	off, _ := strconv.Atoi(r.URL.Query().Get("w"))
+	if off > 0 {
+		off = 0
+	}
+	today := a.today()
+	ws := today.AddDate(0, 0, -int((today.Weekday()+6)%7)+7*off) // lunes
+	we := ws.AddDate(0, 0, 7)
+
+	rng := `made_on >= $1 AND made_on < $2`
+	debit := a.sumWhere(`kind = 'card' AND NOT credit AND `+rng, ws, we)
+	creditCard := a.sumWhere(`kind = 'card' AND credit AND `+rng, ws, we)
+	cashSpent := a.sumWhere(`kind = 'cash' AND `+rng, ws, we)
+	fixed := a.sumWhere(`kind = 'fixed' AND `+rng, ws, we)
+
+	a.render(w, "reportes.html", map[string]any{
+		"Nav": "reportes", "View": "semana",
+		"WeekLabel": fmtDate(ws) + " – " + fmtDate(we.AddDate(0, 0, -1)),
+		"IsCurrentWeek": off == 0, "PrevW": off - 1, "NextW": off + 1,
+		"Debit": debit, "CreditCard": creditCard, "CashSpent": cashSpent, "Fixed": fixed,
+		"WeekSpent": debit + creditCard + cashSpent + fixed,
+		"CatsD":     a.categoryDetails(`x.made_on >= $1 AND x.made_on < $2`, ws, we),
+	})
+}
+
+func (a *App) reportsCharts(w http.ResponseWriter, r *http.Request) {
+	history, err := a.cycleHistory(12)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	// series cronológicas (viejo -> nuevo)
 	chron := make([]CycleStat, len(history))
 	for i, h := range history {
 		chron[len(history)-1-i] = h
@@ -517,15 +588,8 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 	for _, cc := range categories {
 		catCharts = append(catCharts, catChart{cc.Label, barSVG(labels, catSeries[cc.Key], catColors[cc.Key])})
 	}
-
 	a.render(w, "reportes.html", map[string]any{
-		"Nav": "reportes", "C": c, "IsCurrent": c.ID == cur.ID,
-		"Prev": prev, "Next": next,
-		"Incomes": incomes, "Fixed": fixed, "Debit": card - creditCard, "CreditCard": creditCard,
-		"Withdrawals": withdrawals, "CardPay": cardPay,
-		"Spent": spent, "Saved": saved,
-		"Cats":       a.categoryTotals(c.ID),
-		"Concepts":   concepts, "ConceptTotal": conceptTotal, "History": history,
+		"Nav": "reportes", "View": "graficas",
 		"SpentChart": barSVG(labels, spentVals, "#e06a93"),
 		"CatCharts":  catCharts,
 	})
@@ -534,7 +598,7 @@ func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
 // exportCSV descarga todos los movimientos de todos los ciclos.
 func (a *App) exportCSV(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(`
-		SELECT x.made_on, c.started_on, x.kind, x.credit, x.category, x.concept, x.amount
+		SELECT x.made_on, c.started_on, x.kind, x.credit, x.cash, x.category, x.concept, x.amount
 		FROM transactions x JOIN cycles c ON c.id = x.cycle_id
 		ORDER BY x.made_on, x.id`)
 	if err != nil {
@@ -550,14 +614,18 @@ func (a *App) exportCSV(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var made, started time.Time
 		var kind, category, concept string
-		var credit bool
+		var credit, cash bool
 		var amount int64
-		if rows.Scan(&made, &started, &kind, &credit, &category, &concept, &amount) != nil {
+		if rows.Scan(&made, &started, &kind, &credit, &cash, &category, &concept, &amount) != nil {
 			continue
+		}
+		tipo := csvKind(kind, credit)
+		if kind == "income" && cash {
+			tipo = "entrada_efectivo"
 		}
 		cw.Write([]string{
 			made.Format("2006-01-02"), started.Format("2006-01-02"),
-			csvKind(kind, credit), category, concept,
+			tipo, category, concept,
 			fmt.Sprintf("%d.%02d", amount/100, amount%100),
 		})
 	}

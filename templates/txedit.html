@@ -11,6 +11,14 @@
   <label>Fecha
     <input type="date" name="made_on" value="{{.Date}}" required>
   </label>
+  {{if eq .T.Kind "income"}}
+  <label>Llegó
+    <select name="via">
+      <option value="banco" {{if not .T.Cash}}selected{{end}}>Al banco / tarjeta</option>
+      <option value="efectivo" {{if .T.Cash}}selected{{end}}>En efectivo (va al sobre)</option>
+    </select>
+  </label>
+  {{end}}
   {{if or (eq .T.Kind "card") (eq .T.Kind "cash")}}
   <label>Fuente
     <select name="source">

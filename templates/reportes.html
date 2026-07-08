@@ -1,29 +1,71 @@
+{{define "rubros"}}
+<ul class="breakdown">
+{{range .}}
+  <li>
+    <details class="catdrop">
+      <summary>
+        <span class="blabel">
+          <span class="name">{{.Stat.Label}}</span>
+          <span class="v">{{money .Stat.Amount}} <span class="chev">›</span></span>
+        </span>
+        <span class="repbar"><span class="rfill cat" data-w="{{.Stat.Pct}}"></span></span>
+      </summary>
+      {{if .Txs}}
+      <ul class="txlist sub">
+      {{range .Txs}}
+        <li>
+          <a href="/tx/{{.ID}}">
+            <span class="date">{{date .MadeOn}}</span>
+            <span class="what">
+              {{if .Concept}}{{.Concept}}{{else}}<em>sin concepto</em>{{end}}
+              <span class="muted small">{{kindLabel .Kind .Credit}}</span>
+            </span>
+            <span class="amount">{{money .Amount}}</span>
+          </a>
+        </li>
+      {{end}}
+      </ul>
+      {{else}}
+      <p class="empty small">Sin gastos de {{.Stat.Label}} en este periodo.</p>
+      {{end}}
+    </details>
+  </li>
+{{end}}
+</ul>
+{{end}}
+
 {{define "content"}}
 <header class="top">
+{{if eq .View "mes"}}
   {{if .Prev.Valid}}<a class="navarrow" href="/reportes?c={{.Prev.Int64}}">‹</a>{{else}}<span class="navarrow off">‹</span>{{end}}
   <h1 class="center">{{month .C.StartedOn}}{{if not .IsCurrent}} <span class="muted small">(cerrado)</span>{{end}}</h1>
   {{if .Next.Valid}}<a class="navarrow" href="/reportes?c={{.Next.Int64}}">›</a>{{else}}<span class="navarrow off">›</span>{{end}}
+{{else if eq .View "semana"}}
+  <a class="navarrow" href="/reportes?v=semana&w={{.PrevW}}">‹</a>
+  <h1 class="center">{{if .IsCurrentWeek}}Esta semana{{else}}{{.WeekLabel}}{{end}}</h1>
+  {{if .IsCurrentWeek}}<span class="navarrow off">›</span>{{else}}<a class="navarrow" href="/reportes?v=semana&w={{.NextW}}">›</a>{{end}}
+{{else}}
+  <h1 class="center">Gráficas</h1>
+{{end}}
 </header>
 
-<section class="hero">
+<nav class="subtabs">
+  <a href="/reportes" class="{{if eq .View "mes"}}on{{end}}">Mes</a>
+  <a href="/reportes?v=semana" class="{{if eq .View "semana"}}on{{end}}">Semana</a>
+  <a href="/reportes?v=graficas" class="{{if eq .View "graficas"}}on{{end}}">Gráficas</a>
+</nav>
+
+{{if eq .View "mes"}}
+
+<h2 class="sec">Rubros vigilados</h2>
+<p class="muted small subsec">Toca un rubro para ver sus gastos del mes.</p>
+{{template "rubros" .CatsD}}
+
+<section class="hero compact">
   <p class="label">Gastado en el mes</p>
   <p class="big">{{money .Spent}}</p>
   <p class="sub">de {{money .Incomes}} en entradas · ahorro {{money .Saved}}</p>
 </section>
-
-<h2 class="sec">Rubros vigilados</h2>
-<p class="muted small subsec">Lo que llevas gastado este mes en los rubros que quieres reducir.</p>
-<ul class="breakdown">
-{{range .Cats}}
-  <li>
-    <div class="blabel">
-      <span class="name">{{.Label}}</span>
-      <span class="v">{{money .Amount}}{{if gt $.Incomes 0}} <span class="muted small">· {{pct .Amount $.Incomes}}% de tus entradas</span>{{end}}</span>
-    </div>
-    <div class="repbar"><div class="rfill cat" data-w="{{.Pct}}"></div></div>
-  </li>
-{{end}}
-</ul>
 
 <h2 class="sec">Resumen</h2>
 <section class="summary">
@@ -31,18 +73,10 @@
   <div class="cell"><span class="k">T. débito</span><span class="v">{{money .Debit}}</span></div>
   <div class="cell"><span class="k">T. crédito</span><span class="v">{{money .CreditCard}}</span></div>
   <div class="cell"><span class="k">Efectivo (retiros)</span><span class="v">{{money .Withdrawals}}</span></div>
+  {{if gt .CashIn 0}}<div class="cell"><span class="k">Entradas en efectivo (al sobre)</span><span class="v">{{money .CashIn}}</span></div>{{end}}
   {{if gt .CardPay 0}}<div class="cell"><span class="k">Pagos de tarjeta (no son gasto)</span><span class="v">{{money .CardPay}}</span></div>{{end}}
   <div class="cell hi"><span class="k">Ahorro del mes</span><span class="v">{{money .Saved}}</span></div>
 </section>
-
-<h2 class="sec">Gasto total por mes</h2>
-<div class="chartcard">{{.SpentChart}}</div>
-
-<h2 class="sec">Rubros por mes</h2>
-<p class="muted small subsec">Tu avance en los rubros que quieres reducir: si las barras bajan, vas bien.</p>
-{{range .CatCharts}}
-<div class="chartcard"><h3 class="chart-title">{{.Label}}</h3>{{.SVG}}</div>
-{{end}}
 
 <h2 class="sec">¿En qué gastaste?</h2>
 <p class="muted small subsec">Tarjeta, efectivo y fijos agrupados por concepto.</p>
@@ -80,6 +114,40 @@
 </ul>
 {{else}}
 <p class="empty">Aún no hay meses para comparar.</p>
+{{end}}
+
+{{else if eq .View "semana"}}
+
+<h2 class="sec">Rubros vigilados</h2>
+<p class="muted small subsec">Toca un rubro para ver sus gastos de la semana ({{.WeekLabel}}).</p>
+{{template "rubros" .CatsD}}
+
+<section class="hero compact">
+  <p class="label">Gastado en la semana</p>
+  <p class="big">{{money .WeekSpent}}</p>
+  <p class="sub">lunes a domingo · incluye tarjeta, efectivo y fijos pagados</p>
+</section>
+
+<h2 class="sec">Resumen de la semana</h2>
+<section class="summary">
+  <div class="cell"><span class="k">T. débito</span><span class="v">{{money .Debit}}</span></div>
+  <div class="cell"><span class="k">T. crédito</span><span class="v">{{money .CreditCard}}</span></div>
+  <div class="cell"><span class="k">Efectivo (gastado)</span><span class="v">{{money .CashSpent}}</span></div>
+  <div class="cell"><span class="k">Fijos pagados</span><span class="v">{{money .Fixed}}</span></div>
+  <div class="cell hi"><span class="k">Total</span><span class="v">{{money .WeekSpent}}</span></div>
+</section>
+
+{{else}}
+
+<h2 class="sec">Gasto total por mes</h2>
+<div class="chartcard">{{.SpentChart}}</div>
+
+<h2 class="sec">Rubros por mes</h2>
+<p class="muted small subsec">Tu avance en los rubros que quieres reducir: si las barras bajan, vas bien.</p>
+{{range .CatCharts}}
+<div class="chartcard"><h3 class="chart-title">{{.Label}}</h3>{{.SVG}}</div>
+{{end}}
+
 {{end}}
 
 <a class="btn ghost export" href="/export.csv" download>Exportar todo a CSV</a>

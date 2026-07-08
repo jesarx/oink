@@ -14,6 +14,7 @@ Disponible = Entradas recibidas − Meta de ahorro − Gastos fijos (pagados y p
 - Los **gastos fijos** se descuentan completos aunque no estén pagados; marcarlos como pagados solo registra la fecha.
 - La **tarjeta de crédito cuenta cuando gastas, no cuando la pagas**: cada compra a crédito descuenta del disponible al instante (ese mes consumiste ese dinero). El **pago de la tarjeta** se registra con "Pagué la tarjeta" en el home y **no cuenta como gasto** —solo baja la deuda acumulada—, porque ya contó el mes en que compraste.
 - El **sobre semanal de efectivo**: el retiro del cajero descuenta del disponible; los gastos en efectivo solo descuentan del sobre (el dinero ya salió al retirarlo). El sobre corre de lunes a domingo.
+- Las **entradas en efectivo** (no fijas marcadas "en efectivo") van directo al sobre semanal: cuentan como entrada del mes, pero no engordan el disponible bancario, porque ese dinero nunca pasó por el banco.
 - El **ciclo mensual no es el mes calendario**: empieza cuando registras la primera de tus entradas. Si registras una entrada que ya llegó en el ciclo abierto, oink cierra el mes y abre uno nuevo.
 
 ## Requisitos

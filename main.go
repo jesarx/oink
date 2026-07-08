@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     concept     text NOT NULL DEFAULT '',
     category    text NOT NULL DEFAULT '',
     credit      boolean NOT NULL DEFAULT false,
+    cash        boolean NOT NULL DEFAULT false,
     made_on     date NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -72,6 +73,8 @@ CREATE INDEX IF NOT EXISTS transactions_cat_idx ON transactions (cycle_id, categ
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_kind_check;
 ALTER TABLE transactions ADD CONSTRAINT transactions_kind_check
     CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay'));
+-- migración para bases existentes: entradas en efectivo (van al sobre semanal)
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cash boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS sessions (
     token      text PRIMARY KEY,

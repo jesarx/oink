@@ -82,17 +82,14 @@ em { color: var(--faint); font-style: italic; }
 .plus.pink { color: var(--pink); border: 1.5px solid var(--pink); }
 .plus.green { color: var(--green); border: 1.5px solid var(--green); }
 
-/* ---- rubros rápidos (home) ---- */
-.quickcats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+/* ---- rubros rápidos (home): solo atajos de captura, sin sumas ---- */
+.quickcats { display: flex; gap: 8px; margin: 0 0 12px; }
 .qcat {
-  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  padding: 10px 6px; text-align: center; color: var(--text);
-  display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+  flex: 1; background: transparent; border: 1px solid rgba(239,161,59,.35); border-radius: 999px;
+  color: var(--muted); font-size: 14px; padding: 9px 8px; text-align: center; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.qcat:active { background: var(--card2); }
-.qcat .qc-label { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.qcat .qc-amt { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--amber); }
+.qcat:active { color: var(--amber); border-color: var(--amber); }
 
 /* ---- filas ---- */
 .row {
@@ -210,6 +207,26 @@ input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px;
 /* ---- reportes ---- */
 .sec { font-size: 15px; font-weight: 600; margin: 22px 0 2px; }
 .subsec { margin-bottom: 10px; }
+.subtabs { display: flex; gap: 8px; margin: 2px 0 6px; }
+.subtabs a {
+  flex: 1; text-align: center; padding: 9px 4px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 14px;
+}
+.subtabs a.on { border-color: var(--pink); color: var(--pink); background: rgba(224,106,147,.08); }
+.hero.compact { padding-top: 14px; }
+.hero.compact .big { font-size: 34px; }
+
+/* rubros desplegables: toca para ver los gastos del periodo */
+.catdrop summary { list-style: none; cursor: pointer; padding: 2px 0; }
+.catdrop summary::-webkit-details-marker { display: none; }
+.catdrop .chev { color: var(--faint); font-size: 13px; display: inline-block; }
+.catdrop[open] .chev { transform: rotate(90deg); }
+.repbar { display: block; }
+.repbar .rfill { display: block; }
+.txlist.sub { margin: 6px 0 2px; }
+.txlist.sub li a { padding: 9px 2px; }
+.txlist.sub li:last-child a { border-bottom: 0; }
+.empty.small { padding: 10px 0; font-size: 13px; }
 .breakdown { list-style: none; padding: 0; margin: 6px 0 4px; }
 .breakdown li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .breakdown li:last-child { border-bottom: 0; }
