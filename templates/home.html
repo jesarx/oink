@@ -42,7 +42,10 @@
 
 <section class="quickcats">
   {{range .Cats}}
-  <button class="qcat" data-open="credit" data-cat="{{.Key}}">{{.Label}}</button>
+  <button class="qcat" data-open="credit" data-cat="{{.Key}}">
+    <span class="qc-label">{{.Label}}</span>
+    <span class="qc-amt">{{money .Amount}}</span>
+  </button>
   {{end}}
 </section>
 

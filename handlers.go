@@ -90,7 +90,7 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 	}
 	a.render(w, "home.html", map[string]any{
 		"Nav": "home", "D": d, "S": s,
-		"Cats":         categories,
+		"Cats":         a.categoryTotals(d.Cycle.ID),
 		"CardConcepts": a.recentConcepts("card"),
 		"CashConcepts": a.recentConcepts("cash"),
 	})

@@ -82,14 +82,17 @@ em { color: var(--faint); font-style: italic; }
 .plus.pink { color: var(--pink); border: 1.5px solid var(--pink); }
 .plus.green { color: var(--green); border: 1.5px solid var(--green); }
 
-/* ---- rubros rápidos (home): solo atajos de captura, sin sumas ---- */
-.quickcats { display: flex; gap: 8px; margin: 0 0 12px; }
+/* ---- rubros rápidos (home): atajo de captura + gastado del mes ---- */
+.quickcats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
 .qcat {
-  flex: 1; background: transparent; border: 1px solid rgba(239,161,59,.35); border-radius: 999px;
-  color: var(--muted); font-size: 14px; padding: 9px 8px; text-align: center; cursor: pointer;
+  background: transparent; border: 1px solid rgba(239,161,59,.35); border-radius: 12px;
+  padding: 8px 4px; text-align: center; color: var(--muted); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
   -webkit-tap-highlight-color: transparent;
 }
-.qcat:active { color: var(--amber); border-color: var(--amber); }
+.qcat:active { border-color: var(--amber); }
+.qcat .qc-label { font-size: 12px; }
+.qcat .qc-amt { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--amber); }
 
 /* ---- filas ---- */
 .row {
@@ -207,12 +210,16 @@ input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px;
 /* ---- reportes ---- */
 .sec { font-size: 15px; font-weight: 600; margin: 22px 0 2px; }
 .subsec { margin-bottom: 10px; }
+/* subpestañas como botones: la activa se rellena de rosa para saber
+   de un vistazo si estás en mes, semana o gráficas */
 .subtabs { display: flex; gap: 8px; margin: 2px 0 6px; }
 .subtabs a {
-  flex: 1; text-align: center; padding: 9px 4px; border-radius: 10px;
-  background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 14px;
+  flex: 1; text-align: center; padding: 10px 4px; border-radius: 12px;
+  background: var(--card2); border: 1px solid var(--line); color: var(--muted);
+  font-size: 14px; font-weight: 600;
 }
-.subtabs a.on { border-color: var(--pink); color: var(--pink); background: rgba(224,106,147,.08); }
+.subtabs a:active { transform: scale(.98); }
+.subtabs a.on { background: var(--pink); border-color: var(--pink); color: #23070f; }
 .hero.compact { padding-top: 14px; }
 .hero.compact .big { font-size: 34px; }
 

@@ -118,15 +118,15 @@
 
 {{else if eq .View "semana"}}
 
-<h2 class="sec">Rubros vigilados</h2>
-<p class="muted small subsec">Toca un rubro para ver sus gastos de la semana ({{.WeekLabel}}).</p>
-{{template "rubros" .CatsD}}
-
 <section class="hero compact">
   <p class="label">Gastado en la semana</p>
   <p class="big">{{money .WeekSpent}}</p>
   <p class="sub">lunes a domingo · incluye tarjeta, efectivo y fijos pagados</p>
 </section>
+
+<h2 class="sec">Rubros vigilados</h2>
+<p class="muted small subsec">Toca un rubro para ver sus gastos de la semana ({{.WeekLabel}}).</p>
+{{template "rubros" .CatsD}}
 
 <h2 class="sec">Resumen de la semana</h2>
 <section class="summary">
