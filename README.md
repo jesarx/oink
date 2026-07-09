@@ -11,7 +11,7 @@ Disponible = Entradas recibidas − Meta de ahorro − Gastos fijos (pagados y p
 ```
 
 - La **meta de ahorro** (default $15,000) se aparta desde el día uno: ese dinero no existe.
-- Los **gastos fijos** se descuentan completos aunque no estén pagados; marcarlos como pagados solo registra la fecha.
+- Los **gastos fijos** se descuentan completos aunque no estén pagados; marcarlos como pagados solo registra la fecha. Un fijo puede marcarse como **"se paga en efectivo"**: al pagarlo se descuenta del sobre semanal y no del disponible bancario (el retiro que fondeó ese efectivo ya contó).
 - La **tarjeta de crédito cuenta cuando gastas, no cuando la pagas**: cada compra a crédito descuenta del disponible al instante (ese mes consumiste ese dinero). El **pago de la tarjeta** se registra con "Pagué la tarjeta" en el home y **no cuenta como gasto** —solo baja la deuda acumulada—, porque ya contó el mes en que compraste.
 - El **sobre semanal de efectivo**: el retiro del cajero descuenta del disponible; los gastos en efectivo solo descuentan del sobre (el dinero ya salió al retirarlo). El sobre corre de lunes a domingo.
 - Las **entradas en efectivo** (no fijas marcadas "en efectivo") van directo al sobre semanal: cuentan como entrada del mes, pero no engordan el disponible bancario, porque ese dinero nunca pasó por el banco.

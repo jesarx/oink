@@ -42,8 +42,11 @@ CREATE TABLE IF NOT EXISTS templates (
     name     text NOT NULL,
     amount   bigint NOT NULL,
     active   boolean NOT NULL DEFAULT true,
-    position smallint NOT NULL DEFAULT 0
+    position smallint NOT NULL DEFAULT 0,
+    pay_cash boolean NOT NULL DEFAULT false
 );
+-- migración para bases existentes: fijos que se pagan en efectivo (del sobre)
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS pay_cash boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS cycles (
     id         serial PRIMARY KEY,

@@ -174,8 +174,8 @@ func (a *App) txUpdate(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if kind == "income" {
-		// una entrada puede corregirse entre banco y efectivo (sobre)
+	if kind == "income" || kind == "fixed" {
+		// entradas y fijos pueden corregirse entre banco y efectivo (sobre)
 		switch r.FormValue("via") {
 		case "banco":
 			cash = false
@@ -331,8 +331,8 @@ func (a *App) fixedPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) fixedPay(w http.ResponseWriter, r *http.Request) {
 	tplID, _ := strconv.Atoi(r.FormValue("template_id"))
 	var tpl Template
-	err := a.db.QueryRow(`SELECT id, name, amount FROM templates WHERE id = $1 AND kind = 'fixed' AND active`, tplID).
-		Scan(&tpl.ID, &tpl.Name, &tpl.Amount)
+	err := a.db.QueryRow(`SELECT id, name, amount, pay_cash FROM templates WHERE id = $1 AND kind = 'fixed' AND active`, tplID).
+		Scan(&tpl.ID, &tpl.Name, &tpl.Amount, &tpl.PayCash)
 	if err != nil {
 		http.Error(w, "gasto fijo no encontrado", 404)
 		return
@@ -356,8 +356,8 @@ func (a *App) fixedPay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "este fijo ya se pagó en el ciclo actual", 409)
 		return
 	}
-	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, template_id, amount, concept, made_on)
-		VALUES ($1,'fixed',$2,$3,$4,$5)`, c.ID, tpl.ID, amount, tpl.Name, a.today())
+	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, template_id, amount, concept, cash, made_on)
+		VALUES ($1,'fixed',$2,$3,$4,$5,$6)`, c.ID, tpl.ID, amount, tpl.Name, tpl.PayCash, a.today())
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -387,7 +387,8 @@ func (a *App) templateCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.db.Exec(`INSERT INTO templates (kind, name, amount) VALUES ($1,$2,$3)`, kind, name, amount)
+	payCash := kind == "fixed" && r.FormValue("pay") == "efectivo"
+	a.db.Exec(`INSERT INTO templates (kind, name, amount, pay_cash) VALUES ($1,$2,$3,$4)`, kind, name, amount, payCash)
 	a.redirectByKind(w, r, kind)
 }
 
@@ -400,8 +401,11 @@ func (a *App) templateUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var kind string
-	if err := a.db.QueryRow(`UPDATE templates SET name=$1, amount=$2 WHERE id=$3 RETURNING kind`,
-		name, amount, id).Scan(&kind); err != nil {
+	// pay solo viene en el formulario de fijos; vacío = conservar el actual
+	if err := a.db.QueryRow(`UPDATE templates SET name=$1, amount=$2,
+		pay_cash = CASE WHEN $3 = '' THEN pay_cash ELSE $3 = 'efectivo' END
+		WHERE id=$4 RETURNING kind`,
+		name, amount, r.FormValue("pay"), id).Scan(&kind); err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -455,7 +459,8 @@ func (a *App) monthPage(w http.ResponseWriter, r *http.Request) {
 		c.StartedOn, c.ID).Scan(&next)
 
 	incomes := a.sumTx(c.ID, `kind = 'income'`)
-	fixed := a.sumTx(c.ID, `kind = 'fixed'`)
+	fixed := a.sumTx(c.ID, `kind = 'fixed' AND NOT cash`)
+	fixedCash := a.sumTx(c.ID, `kind = 'fixed' AND cash`)
 	card := a.sumTx(c.ID, `kind = 'card'`)
 	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
@@ -467,7 +472,8 @@ func (a *App) monthPage(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "month.html", map[string]any{
 		"Nav": "mes", "C": c, "Txs": txs, "IsCurrent": c.ID == cur.ID,
 		"Prev": prev, "Next": next,
-		"Incomes": incomes, "Fixed": fixed, "Debit": card - creditCard, "CreditCard": creditCard,
+		"Incomes": incomes, "Fixed": fixed, "FixedCash": fixedCash,
+		"Debit": card - creditCard, "CreditCard": creditCard,
 		"Withdrawals": withdrawals, "Cash": cash, "CardPay": cardPay, "CashIn": cashIn, "Saved": saved,
 	})
 }
@@ -508,7 +514,8 @@ func (a *App) reportsMonth(w http.ResponseWriter, r *http.Request) {
 
 	incomes := a.sumTx(c.ID, `kind = 'income'`)
 	cashIn := a.sumTx(c.ID, `kind = 'income' AND cash`)
-	fixed := a.sumTx(c.ID, `kind = 'fixed'`)
+	fixed := a.sumTx(c.ID, `kind = 'fixed' AND NOT cash`)
+	fixedCash := a.sumTx(c.ID, `kind = 'fixed' AND cash`)
 	card := a.sumTx(c.ID, `kind = 'card'`)
 	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
@@ -526,7 +533,8 @@ func (a *App) reportsMonth(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "reportes.html", map[string]any{
 		"Nav": "reportes", "View": "mes", "C": c, "IsCurrent": c.ID == cur.ID,
 		"Prev": prev, "Next": next,
-		"Incomes": incomes, "CashIn": cashIn, "Fixed": fixed, "Debit": card - creditCard,
+		"Incomes": incomes, "CashIn": cashIn, "Fixed": fixed, "FixedCash": fixedCash,
+		"Debit": card - creditCard,
 		"CreditCard": creditCard, "Withdrawals": withdrawals, "CardPay": cardPay,
 		"Spent": spent, "Saved": saved,
 		"CatsD":    a.categoryDetails(`x.cycle_id = $1`, c.ID),
@@ -620,8 +628,13 @@ func (a *App) exportCSV(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		tipo := csvKind(kind, credit)
-		if kind == "income" && cash {
-			tipo = "entrada_efectivo"
+		if cash {
+			switch kind {
+			case "income":
+				tipo = "entrada_efectivo"
+			case "fixed":
+				tipo = "gasto_fijo_efectivo"
+			}
 		}
 		cw.Write([]string{
 			made.Format("2006-01-02"), started.Format("2006-01-02"),
