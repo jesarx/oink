@@ -14,11 +14,12 @@ type Settings struct {
 }
 
 type Template struct {
-	ID       int
-	Kind     string
-	Name     string
-	Amount   int64
-	Active   bool
+	ID      int
+	Kind    string
+	Name    string
+	Amount  int64
+	Active  bool
+	PayCash bool // fijos: se paga en efectivo, del sobre semanal
 	// estado dentro del ciclo abierto:
 	DoneOn     sql.NullTime
 	DoneAmount sql.NullInt64
@@ -198,7 +199,9 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	}
 	d.Cycle = c
 	d.Incomes = a.sumTx(c.ID, `kind = 'income'`)
-	d.FixedPaid = a.sumTx(c.ID, `kind = 'fixed'`)
+	// los fijos pagados en efectivo salen del sobre (el retiro que los fondeó
+	// ya contó en el banco), así que aquí solo cuentan los pagados del banco
+	d.FixedPaid = a.sumTx(c.ID, `kind = 'fixed' AND NOT cash`)
 	d.CardTotal = a.sumTx(c.ID, `kind = 'card'`)
 	d.CreditTotal = a.sumTx(c.ID, `kind = 'card' AND credit`)
 	d.DebitTotal = d.CardTotal - d.CreditTotal
@@ -209,7 +212,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	// fijos pendientes: plantillas activas sin pago registrado en este ciclo
 	var pending sql.NullInt64
 	a.db.QueryRow(`
-		SELECT COALESCE(SUM(t.amount),0), COUNT(*)
+		SELECT COALESCE(SUM(t.amount) FILTER (WHERE NOT t.pay_cash),0), COUNT(*)
 		FROM templates t
 		WHERE t.kind = 'fixed' AND t.active
 		  AND NOT EXISTS (SELECT 1 FROM transactions x
@@ -262,7 +265,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	// sobre semanal: semana lunes-domingo
 	weekStart := today.AddDate(0, 0, -int((today.Weekday()+6)%7))
 	d.EnvelopeIn = a.sumTx(c.ID, `(kind = 'withdrawal' OR (kind = 'income' AND cash)) AND made_on >= $2`, weekStart)
-	cashSpent := a.sumTx(c.ID, `kind = 'cash' AND made_on >= $2`, weekStart)
+	cashSpent := a.sumTx(c.ID, `(kind = 'cash' OR (kind = 'fixed' AND cash)) AND made_on >= $2`, weekStart)
 	d.Envelope = d.EnvelopeIn - cashSpent
 
 	return d, s, nil
@@ -270,7 +273,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 
 func (a *App) listTemplates(kind string, cycleID int) ([]Template, error) {
 	rows, err := a.db.Query(`
-		SELECT t.id, t.kind, t.name, t.amount, t.active, x.made_on, x.amount
+		SELECT t.id, t.kind, t.name, t.amount, t.active, t.pay_cash, x.made_on, x.amount
 		FROM templates t
 		LEFT JOIN LATERAL (
 			SELECT made_on, amount FROM transactions
@@ -286,7 +289,7 @@ func (a *App) listTemplates(kind string, cycleID int) ([]Template, error) {
 	var out []Template
 	for rows.Next() {
 		var t Template
-		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.Amount, &t.Active, &t.DoneOn, &t.DoneAmount); err != nil {
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.Amount, &t.Active, &t.PayCash, &t.DoneOn, &t.DoneAmount); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -446,7 +449,8 @@ func (a *App) cycleHistory(limit int) ([]CycleStat, error) {
 		SELECT c.id, c.started_on, c.closed_on,
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income'), 0),
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income' AND x.cash), 0),
-		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind IN ('fixed','card','withdrawal')), 0)
+		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind IN ('card','withdrawal')
+		                                       OR (x.kind = 'fixed' AND NOT x.cash)), 0)
 		FROM cycles c
 		LEFT JOIN transactions x ON x.cycle_id = c.id
 		GROUP BY c.id

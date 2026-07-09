@@ -57,19 +57,20 @@
 
 {{if eq .View "mes"}}
 
-<h2 class="sec">Rubros vigilados</h2>
-<p class="muted small subsec">Toca un rubro para ver sus gastos del mes.</p>
-{{template "rubros" .CatsD}}
-
 <section class="hero compact">
   <p class="label">Gastado en el mes</p>
   <p class="big">{{money .Spent}}</p>
   <p class="sub">de {{money .Incomes}} en entradas · ahorro {{money .Saved}}</p>
 </section>
 
+<h2 class="sec">Rubros vigilados</h2>
+<p class="muted small subsec">Toca un rubro para ver sus gastos del mes.</p>
+{{template "rubros" .CatsD}}
+
 <h2 class="sec">Resumen</h2>
 <section class="summary">
   <div class="cell"><span class="k">Fijos</span><span class="v">{{money .Fixed}}</span></div>
+  {{if gt .FixedCash 0}}<div class="cell"><span class="k">Fijos en efectivo (del sobre)</span><span class="v">{{money .FixedCash}}</span></div>{{end}}
   <div class="cell"><span class="k">T. débito</span><span class="v">{{money .Debit}}</span></div>
   <div class="cell"><span class="k">T. crédito</span><span class="v">{{money .CreditCard}}</span></div>
   <div class="cell"><span class="k">Efectivo (retiros)</span><span class="v">{{money .Withdrawals}}</span></div>

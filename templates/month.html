@@ -8,6 +8,7 @@
 <section class="summary">
   <div class="cell"><span class="k">Entradas</span><span class="v">{{money .Incomes}}</span></div>
   <div class="cell"><span class="k">Fijos pagados</span><span class="v">{{money .Fixed}}</span></div>
+  {{if gt .FixedCash 0}}<div class="cell"><span class="k">Fijos en efectivo (del sobre)</span><span class="v">{{money .FixedCash}}</span></div>{{end}}
   <div class="cell"><span class="k">T. débito</span><span class="v">{{money .Debit}}</span></div>
   <div class="cell"><span class="k">T. crédito</span><span class="v">{{money .CreditCard}}</span></div>
   <div class="cell"><span class="k">Retiros (efectivo)</span><span class="v">{{money .Withdrawals}}</span></div>
