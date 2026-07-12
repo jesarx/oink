@@ -1,8 +1,7 @@
-var CACHE = "oink-v1";
-var ASSETS = ["/static/style.css", "/static/app.js", "/static/icon-192.png", "/static/icon-512.png", "/favicon.svg"];
+var CACHE = "oink-v2";
 
 self.addEventListener("install", function (e) {
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }).then(function () { return self.skipWaiting(); }));
+  e.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", function (e) {
@@ -11,10 +10,20 @@ self.addEventListener("activate", function (e) {
   }).then(function () { return self.clients.claim(); }));
 });
 
+// estáticos: cache-first con caché de runtime. Las URLs van versionadas
+// (?v=hash), así que un deploy nuevo produce URLs nuevas y nunca se sirve
+// css/js viejo; las entradas de versiones anteriores mueren con el CACHE.
 self.addEventListener("fetch", function (e) {
   var url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   if (url.pathname.startsWith("/static/") || url.pathname === "/favicon.svg") {
-    e.respondWith(caches.match(e.request).then(function (hit) { return hit || fetch(e.request); }));
+    e.respondWith(caches.open(CACHE).then(function (c) {
+      return c.match(e.request).then(function (hit) {
+        return hit || fetch(e.request).then(function (res) {
+          if (res.ok) c.put(e.request, res.clone());
+          return res;
+        });
+      });
+    }));
   }
 });

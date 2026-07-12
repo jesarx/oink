@@ -1,0 +1,107 @@
+{{define "content"}}
+<h1>Préstamos</h1>
+<p class="muted">Dinero que prestas y que te prestan. Con la casilla activa, el movimiento se refleja de inmediato en tu efectivo (sobre) o tarjeta/banco (disponible).</p>
+
+<section class="split2">
+  <div class="statcard">
+    <span class="k">Me deben</span>
+    <span class="v pos">{{money .OwedToMe}}</span>
+  </div>
+  <div class="statcard">
+    <span class="k">Debo</span>
+    <span class="v {{if gt .IOwe 0}}owe{{end}}">{{money .IOwe}}</span>
+  </div>
+</section>
+
+<h2 class="sec">Me deben</h2>
+{{range .Lent}}
+<div class="row tpl">
+  <div>
+    <p>{{.Name}}</p>
+    <p class="muted small">{{money .Amount}} · {{if .Cash}}efectivo{{else}}tarjeta{{end}} · presté el {{date .CreatedOn}}</p>
+  </div>
+  <form method="post" action="/debt/{{.ID}}/settle" class="settle">
+    <label class="toggle"><input type="checkbox" name="apply" checked> a mi saldo</label>
+    <button class="btn primary">Me pagó</button>
+  </form>
+  <details>
+    <summary>Más</summary>
+    <form method="post" action="/debt/{{.ID}}/delete">
+      <button class="btn danger" data-confirm="¿Borrar este préstamo sin saldarlo? No revierte movimientos ya registrados.">Borrar registro</button>
+    </form>
+  </details>
+</div>
+{{else}}
+<p class="empty">Nadie te debe. Qué paz.</p>
+{{end}}
+
+<details class="add">
+  <summary>+ Presté dinero</summary>
+  <form method="post" action="/debt" class="edit">
+    <input type="hidden" name="direction" value="lent">
+    <input type="text" name="name" placeholder="¿A quién?" maxlength="60" required>
+    <input type="text" name="amount" inputmode="decimal" placeholder="Monto" required>
+    <select name="source">
+      <option value="cash">De mi efectivo (sobre)</option>
+      <option value="card">De mi tarjeta / banco</option>
+    </select>
+    <label class="toggle wide"><input type="checkbox" name="apply" checked> descontarlo de mi saldo ahora</label>
+    <button class="btn primary">Registrar</button>
+  </form>
+</details>
+
+{{if .LentDone}}
+<details class="settledlist">
+  <summary>Saldados ({{len .LentDone}})</summary>
+  {{range .LentDone}}
+  <p class="muted small settled">{{.Name}} · {{money .Amount}} · me pagó el {{date .SettledOn.Time}}</p>
+  {{end}}
+</details>
+{{end}}
+
+<h2 class="sec">Debo</h2>
+{{range .Borrowed}}
+<div class="row tpl">
+  <div>
+    <p>{{.Name}}</p>
+    <p class="muted small">{{money .Amount}} · {{if .Cash}}efectivo{{else}}tarjeta{{end}} · me prestó el {{date .CreatedOn}}</p>
+  </div>
+  <form method="post" action="/debt/{{.ID}}/settle" class="settle">
+    <label class="toggle"><input type="checkbox" name="apply" checked> de mi saldo</label>
+    <button class="btn primary">Ya pagué</button>
+  </form>
+  <details>
+    <summary>Más</summary>
+    <form method="post" action="/debt/{{.ID}}/delete">
+      <button class="btn danger" data-confirm="¿Borrar esta deuda sin saldarla? No revierte movimientos ya registrados.">Borrar registro</button>
+    </form>
+  </details>
+</div>
+{{else}}
+<p class="empty">No debes nada. Qué libertad.</p>
+{{end}}
+
+<details class="add">
+  <summary>+ Me prestaron dinero</summary>
+  <form method="post" action="/debt" class="edit">
+    <input type="hidden" name="direction" value="borrowed">
+    <input type="text" name="name" placeholder="¿Quién?" maxlength="60" required>
+    <input type="text" name="amount" inputmode="decimal" placeholder="Monto" required>
+    <select name="source">
+      <option value="cash">En efectivo (al sobre)</option>
+      <option value="card">A mi tarjeta / banco</option>
+    </select>
+    <label class="toggle wide"><input type="checkbox" name="apply" checked> sumarlo a mi saldo ahora</label>
+    <button class="btn primary">Registrar</button>
+  </form>
+</details>
+
+{{if .BorrowedDone}}
+<details class="settledlist">
+  <summary>Saldados ({{len .BorrowedDone}})</summary>
+  {{range .BorrowedDone}}
+  <p class="muted small settled">{{.Name}} · {{money .Amount}} · pagué el {{date .SettledOn.Time}}</p>
+  {{end}}
+</details>
+{{end}}
+{{end}}
