@@ -15,6 +15,29 @@
     requestAnimationFrame(function () { el.style.width = el.dataset.w + "%"; });
   });
 
+  // anti doble envío: con conexión lenta un segundo tap reenviaría el
+  // formulario y duplicaría el movimiento. El primer envío marca el form y
+  // apaga sus botones; volver a la página (bfcache) lo rearma.
+  document.addEventListener("submit", function (e) {
+    if (e.defaultPrevented) return;
+    var f = e.target;
+    if (f.dataset.sent) { e.preventDefault(); return; }
+    f.dataset.sent = "1";
+    setTimeout(function () {
+      f.querySelectorAll("button:not([type=button])").forEach(function (b) {
+        b.disabled = true;
+        b.dataset.lock = "1";
+      });
+    }, 0);
+  });
+  window.addEventListener("pageshow", function () {
+    document.querySelectorAll("form[data-sent]").forEach(function (f) { delete f.dataset.sent; });
+    document.querySelectorAll("button[data-lock]").forEach(function (b) {
+      b.disabled = false;
+      delete b.dataset.lock;
+    });
+  });
+
   // ---- teclado ----
   var pad = document.getElementById("keypad");
   if (pad) {

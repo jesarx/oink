@@ -198,16 +198,36 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 		return d, s, err
 	}
 	d.Cycle = c
-	d.Incomes = a.sumTx(c.ID, `kind = 'income'`)
-	// los fijos pagados en efectivo salen del sobre (el retiro que los fondeó
-	// ya contó en el banco), así que aquí solo cuentan los pagados del banco
-	d.FixedPaid = a.sumTx(c.ID, `kind = 'fixed' AND NOT cash`)
-	d.CardTotal = a.sumTx(c.ID, `kind = 'card'`)
-	d.CreditTotal = a.sumTx(c.ID, `kind = 'card' AND credit`)
+	today := a.today()
+	weekStart := today.AddDate(0, 0, -int((today.Weekday()+6)%7))
+
+	// una sola consulta agregada para todo el tablero:
+	// - los fijos pagados en efectivo salen del sobre (el retiro que los
+	//   fondeó ya contó en el banco), solo cuentan los pagados del banco
+	// - las entradas en efectivo van al sobre, no al banco
+	// - los préstamos vía banco mueven el disponible; los de efectivo, el sobre
+	var cashIn, withdrawals, loanOut, loanIn, weekOut int64
+	err = a.db.QueryRow(`SELECT
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'income'), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'income' AND cash), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'fixed' AND NOT cash), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'card'), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'card' AND credit), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'withdrawal'), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'loan_out' AND NOT cash), 0),
+		COALESCE(SUM(amount) FILTER (WHERE kind = 'loan_in' AND NOT cash), 0),
+		COALESCE(SUM(amount) FILTER (WHERE made_on >= $2 AND (kind = 'withdrawal' OR (cash AND kind IN ('income','loan_in')))), 0),
+		COALESCE(SUM(amount) FILTER (WHERE made_on >= $2 AND (kind = 'cash' OR (cash AND kind IN ('fixed','loan_out')))), 0)
+		FROM transactions WHERE cycle_id = $1`, c.ID, weekStart).
+		Scan(&d.Incomes, &cashIn, &d.FixedPaid, &d.CardTotal, &d.CreditTotal,
+			&withdrawals, &loanOut, &loanIn, &d.EnvelopeIn, &weekOut)
+	if err != nil {
+		return d, s, err
+	}
 	d.DebitTotal = d.CardTotal - d.CreditTotal
 	d.CreditDebt = a.creditDebt()
-	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
 	d.Variable = d.CardTotal + withdrawals
+	d.Envelope = d.EnvelopeIn - weekOut
 
 	// fijos pendientes: plantillas activas sin pago registrado en este ciclo
 	var pending sql.NullInt64
@@ -220,12 +240,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 		c.ID).Scan(&pending, &d.PendingFixed)
 	d.FixedPending = pending.Int64
 
-	// las entradas en efectivo van al sobre, no al banco: se muestran en
-	// Incomes pero no engordan el disponible bancario
-	cashIn := a.sumTx(c.ID, `kind = 'income' AND cash`)
-	d.Available = d.Incomes - cashIn - s.SavingsGoal - d.FixedPaid - d.FixedPending - d.Variable
-
-	today := a.today()
+	d.Available = d.Incomes - cashIn - s.SavingsGoal - d.FixedPaid - d.FixedPending - d.Variable - loanOut + loanIn
 	d.DaysElapsed = int(today.Sub(c.StartedOn).Hours()/24) + 1
 	end := c.StartedOn.AddDate(0, 1, 0) // fin esperado: un mes después del inicio
 	d.DaysLeft = int(end.Sub(today).Hours() / 24)
@@ -237,7 +252,7 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	}
 
 	// ritmo: fracción de presupuesto variable gastada vs fracción de tiempo transcurrida
-	budget := d.Incomes - cashIn - s.SavingsGoal - d.FixedPaid - d.FixedPending
+	budget := d.Incomes - cashIn - s.SavingsGoal - d.FixedPaid - d.FixedPending - loanOut + loanIn
 	totalDays := d.DaysElapsed + d.DaysLeft - 1
 	if totalDays < 1 {
 		totalDays = 1
@@ -261,12 +276,6 @@ func (a *App) loadDashboard() (Dashboard, Settings, error) {
 	default:
 		d.Status = "ok"
 	}
-
-	// sobre semanal: semana lunes-domingo
-	weekStart := today.AddDate(0, 0, -int((today.Weekday()+6)%7))
-	d.EnvelopeIn = a.sumTx(c.ID, `(kind = 'withdrawal' OR (kind = 'income' AND cash)) AND made_on >= $2`, weekStart)
-	cashSpent := a.sumTx(c.ID, `(kind = 'cash' OR (kind = 'fixed' AND cash)) AND made_on >= $2`, weekStart)
-	d.Envelope = d.EnvelopeIn - cashSpent
 
 	return d, s, nil
 }
@@ -295,6 +304,47 @@ func (a *App) listTemplates(kind string, cycleID int) ([]Template, error) {
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// ---- préstamos (deudas con personas) ----
+
+type Debt struct {
+	ID        int
+	Direction string // lent: presté | borrowed: me prestaron
+	Name      string
+	Amount    int64
+	Cash      bool // efectivo (sobre) o tarjeta/banco
+	CreatedOn time.Time
+	SettledOn sql.NullTime
+}
+
+func (a *App) listDebts(direction string, settled bool) ([]Debt, error) {
+	where, order, limit := "settled_on IS NULL", "created_on DESC, id DESC", 200
+	if settled {
+		where, order, limit = "settled_on IS NOT NULL", "settled_on DESC, id DESC", 15
+	}
+	rows, err := a.db.Query(fmt.Sprintf(`SELECT id, direction, name, amount, cash, created_on, settled_on
+		FROM debts WHERE direction = $1 AND %s ORDER BY %s LIMIT %d`, where, order, limit), direction)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Debt
+	for rows.Next() {
+		var d Debt
+		if err := rows.Scan(&d.ID, &d.Direction, &d.Name, &d.Amount, &d.Cash, &d.CreatedOn, &d.SettledOn); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// debtTotal suma lo pendiente por dirección (lent = me deben, borrowed = debo).
+func (a *App) debtTotal(direction string) int64 {
+	var v sql.NullInt64
+	a.db.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM debts WHERE direction = $1 AND settled_on IS NULL`, direction).Scan(&v)
+	return v.Int64
 }
 
 // creditDebt calcula la deuda viva de la tarjeta de crédito: todo lo cargado
@@ -440,6 +490,7 @@ type CycleStat struct {
 	Income     int64
 	CashIncome int64 // entradas en efectivo (fueron al sobre, no al banco)
 	Spent      int64 // fijos + tarjeta + retiros (salida real del banco)
+	LoanNet    int64 // préstamos vía banco: entradas menos salidas
 	Saved      int64
 }
 
@@ -450,7 +501,10 @@ func (a *App) cycleHistory(limit int) ([]CycleStat, error) {
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income'), 0),
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind = 'income' AND x.cash), 0),
 		       COALESCE(SUM(x.amount) FILTER (WHERE x.kind IN ('card','withdrawal')
-		                                       OR (x.kind = 'fixed' AND NOT x.cash)), 0)
+		                                       OR (x.kind = 'fixed' AND NOT x.cash)), 0),
+		       COALESCE(SUM(CASE WHEN x.kind = 'loan_in' AND NOT x.cash THEN x.amount
+		                         WHEN x.kind = 'loan_out' AND NOT x.cash THEN -x.amount
+		                         ELSE 0 END), 0)
 		FROM cycles c
 		LEFT JOIN transactions x ON x.cycle_id = c.id
 		GROUP BY c.id
@@ -463,10 +517,10 @@ func (a *App) cycleHistory(limit int) ([]CycleStat, error) {
 	var out []CycleStat
 	for rows.Next() {
 		var s CycleStat
-		if err := rows.Scan(&s.ID, &s.StartedOn, &s.ClosedOn, &s.Income, &s.CashIncome, &s.Spent); err != nil {
+		if err := rows.Scan(&s.ID, &s.StartedOn, &s.ClosedOn, &s.Income, &s.CashIncome, &s.Spent, &s.LoanNet); err != nil {
 			return nil, err
 		}
-		s.Saved = s.Income - s.CashIncome - s.Spent
+		s.Saved = s.Income - s.CashIncome - s.Spent + s.LoanNet
 		out = append(out, s)
 	}
 	return out, rows.Err()

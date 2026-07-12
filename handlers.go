@@ -18,6 +18,7 @@ func (a *App) parseTemplates() {
 		"date":  fmtDate,
 		"cycle": fmtCycle,
 		"month": fmtMonth,
+		"v":     func() string { return a.ver },
 		"amt": func(cents int64) string {
 			if cents%100 == 0 {
 				return strconv.FormatInt(cents/100, 10)
@@ -49,6 +50,10 @@ func (a *App) parseTemplates() {
 				return "Efectivo"
 			case "cardpay":
 				return "Pago t. crédito"
+			case "loan_out":
+				return "Préstamo · salida"
+			case "loan_in":
+				return "Préstamo · entrada"
 			case "withdrawal":
 				return "Retiro de cajero"
 			case "income":
@@ -59,7 +64,7 @@ func (a *App) parseTemplates() {
 			return k
 		},
 	}
-	pages := []string{"login.html", "home.html", "incomes.html", "fixed.html", "month.html", "reportes.html", "settings.html", "txedit.html"}
+	pages := []string{"login.html", "home.html", "incomes.html", "fixed.html", "reportes.html", "prestamos.html", "settings.html", "txedit.html"}
 	a.tmpl = make(map[string]*template.Template, len(pages))
 	for _, p := range pages {
 		t := template.Must(template.New("layout.html").Funcs(funcs).
@@ -143,7 +148,7 @@ func (a *App) txEditPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	a.render(w, "txedit.html", map[string]any{"Nav": "mes", "T": t, "Categories": categories,
+	a.render(w, "txedit.html", map[string]any{"Nav": "reportes", "T": t, "Categories": categories,
 		"Amount": strconv.FormatFloat(float64(t.Amount)/100, 'f', -1, 64),
 		"Date":   t.MadeOn.Format("2006-01-02")})
 }
@@ -215,13 +220,13 @@ func (a *App) txUpdate(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/mes", http.StatusSeeOther)
+	http.Redirect(w, r, "/reportes", http.StatusSeeOther)
 }
 
 func (a *App) txDelete(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(r.PathValue("id"))
 	a.db.Exec(`DELETE FROM transactions WHERE id = $1`, id)
-	http.Redirect(w, r, "/mes", http.StatusSeeOther)
+	http.Redirect(w, r, "/reportes", http.StatusSeeOther)
 }
 
 // ---- entradas ----
@@ -430,54 +435,6 @@ func (a *App) redirectByKind(w http.ResponseWriter, r *http.Request, kind string
 	}
 }
 
-// ---- mes / historial ----
-
-func (a *App) monthPage(w http.ResponseWriter, r *http.Request) {
-	cur, err := a.openCycle()
-	if err != nil {
-		a.fail(w, err)
-		return
-	}
-	c := cur
-	if v := r.URL.Query().Get("c"); v != "" {
-		id, _ := strconv.Atoi(v)
-		err := a.db.QueryRow(`SELECT id, started_on, closed_on FROM cycles WHERE id = $1`, id).
-			Scan(&c.ID, &c.StartedOn, &c.ClosedOn)
-		if err != nil {
-			c = cur
-		}
-	}
-	txs, err := a.listTx(c.ID)
-	if err != nil {
-		a.fail(w, err)
-		return
-	}
-	var prev, next sql.NullInt64
-	a.db.QueryRow(`SELECT id FROM cycles WHERE (started_on, id) < ($1, $2) ORDER BY started_on DESC, id DESC LIMIT 1`,
-		c.StartedOn, c.ID).Scan(&prev)
-	a.db.QueryRow(`SELECT id FROM cycles WHERE (started_on, id) > ($1, $2) ORDER BY started_on ASC, id ASC LIMIT 1`,
-		c.StartedOn, c.ID).Scan(&next)
-
-	incomes := a.sumTx(c.ID, `kind = 'income'`)
-	fixed := a.sumTx(c.ID, `kind = 'fixed' AND NOT cash`)
-	fixedCash := a.sumTx(c.ID, `kind = 'fixed' AND cash`)
-	card := a.sumTx(c.ID, `kind = 'card'`)
-	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
-	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
-	cash := a.sumTx(c.ID, `kind = 'cash'`)
-	cardPay := a.sumTx(c.ID, `kind = 'cardpay'`)
-	cashIn := a.sumTx(c.ID, `kind = 'income' AND cash`)
-	saved := incomes - cashIn - fixed - card - withdrawals
-
-	a.render(w, "month.html", map[string]any{
-		"Nav": "mes", "C": c, "Txs": txs, "IsCurrent": c.ID == cur.ID,
-		"Prev": prev, "Next": next,
-		"Incomes": incomes, "Fixed": fixed, "FixedCash": fixedCash,
-		"Debit": card - creditCard, "CreditCard": creditCard,
-		"Withdrawals": withdrawals, "Cash": cash, "CardPay": cardPay, "CashIn": cashIn, "Saved": saved,
-	})
-}
-
 // ---- reportes ----
 
 func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
@@ -520,11 +477,18 @@ func (a *App) reportsMonth(w http.ResponseWriter, r *http.Request) {
 	creditCard := a.sumTx(c.ID, `kind = 'card' AND credit`)
 	withdrawals := a.sumTx(c.ID, `kind = 'withdrawal'`)
 	cardPay := a.sumTx(c.ID, `kind = 'cardpay'`)
+	loanOut := a.sumTx(c.ID, `kind = 'loan_out' AND NOT cash`)
+	loanIn := a.sumTx(c.ID, `kind = 'loan_in' AND NOT cash`)
 	spent := fixed + card + withdrawals
-	saved := incomes - cashIn - spent
+	saved := incomes - cashIn - spent - loanOut + loanIn
 
 	concepts, conceptTotal := a.conceptBreakdown(c.ID)
 	history, err := a.cycleHistory(12)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	txs, err := a.listTx(c.ID)
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -536,7 +500,8 @@ func (a *App) reportsMonth(w http.ResponseWriter, r *http.Request) {
 		"Incomes": incomes, "CashIn": cashIn, "Fixed": fixed, "FixedCash": fixedCash,
 		"Debit": card - creditCard,
 		"CreditCard": creditCard, "Withdrawals": withdrawals, "CardPay": cardPay,
-		"Spent": spent, "Saved": saved,
+		"LoanOut": loanOut, "LoanIn": loanIn,
+		"Spent": spent, "Saved": saved, "Txs": txs,
 		"CatsD":    a.categoryDetails(`x.cycle_id = $1`, c.ID),
 		"Concepts": concepts, "ConceptTotal": conceptTotal, "History": history,
 	})
@@ -603,6 +568,98 @@ func (a *App) reportsCharts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ---- préstamos ----
+
+func (a *App) debtsPage(w http.ResponseWriter, r *http.Request) {
+	lent, err := a.listDebts("lent", false)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	borrowed, _ := a.listDebts("borrowed", false)
+	lentDone, _ := a.listDebts("lent", true)
+	borrowedDone, _ := a.listDebts("borrowed", true)
+	a.render(w, "prestamos.html", map[string]any{
+		"Nav": "prestamos",
+		"Lent": lent, "Borrowed": borrowed,
+		"LentDone": lentDone, "BorrowedDone": borrowedDone,
+		"OwedToMe": a.debtTotal("lent"), "IOwe": a.debtTotal("borrowed"),
+	})
+}
+
+func (a *App) debtCreate(w http.ResponseWriter, r *http.Request) {
+	direction := r.FormValue("direction")
+	if direction != "lent" && direction != "borrowed" {
+		http.Error(w, "tipo inválido", 400)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	amount, err := parseMoney(r.FormValue("amount"))
+	if name == "" || err != nil || amount <= 0 {
+		http.Error(w, "datos inválidos", 400)
+		return
+	}
+	cash := r.FormValue("source") != "card" // efectivo por default
+	if _, err := a.db.Exec(`INSERT INTO debts (direction, name, amount, cash, created_on)
+		VALUES ($1,$2,$3,$4,$5)`, direction, name, amount, cash, a.today()); err != nil {
+		a.fail(w, err)
+		return
+	}
+	// con el checkbox activo, el préstamo mueve el saldo de inmediato:
+	// presté = salida (baja sobre o disponible), me prestaron = entrada
+	if r.FormValue("apply") == "on" {
+		kind, concept := "loan_out", "Presté a "+name
+		if direction == "borrowed" {
+			kind, concept = "loan_in", "Me prestó "+name
+		}
+		if err := a.insertLoanTx(kind, amount, concept, cash); err != nil {
+			a.fail(w, err)
+			return
+		}
+	}
+	http.Redirect(w, r, "/prestamos", http.StatusSeeOther)
+}
+
+func (a *App) debtSettle(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	var d Debt
+	err := a.db.QueryRow(`UPDATE debts SET settled_on = $1 WHERE id = $2 AND settled_on IS NULL
+		RETURNING direction, name, amount, cash`, a.today(), id).
+		Scan(&d.Direction, &d.Name, &d.Amount, &d.Cash)
+	if err != nil {
+		http.Error(w, "préstamo no encontrado o ya saldado", 404)
+		return
+	}
+	// saldar invierte el flujo original, si se pide reflejarlo en el saldo
+	if r.FormValue("apply") == "on" {
+		kind, concept := "loan_in", "Me pagó "+d.Name
+		if d.Direction == "borrowed" {
+			kind, concept = "loan_out", "Pagué a "+d.Name
+		}
+		if err := a.insertLoanTx(kind, d.Amount, concept, d.Cash); err != nil {
+			a.fail(w, err)
+			return
+		}
+	}
+	http.Redirect(w, r, "/prestamos", http.StatusSeeOther)
+}
+
+func (a *App) debtDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	a.db.Exec(`DELETE FROM debts WHERE id = $1`, id)
+	http.Redirect(w, r, "/prestamos", http.StatusSeeOther)
+}
+
+func (a *App) insertLoanTx(kind string, amount int64, concept string, cash bool) error {
+	c, err := a.openCycle()
+	if err != nil {
+		return err
+	}
+	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, cash, made_on)
+		VALUES ($1,$2,$3,$4,$5,$6)`, c.ID, kind, amount, concept, cash, a.today())
+	return err
+}
+
 // exportCSV descarga todos los movimientos de todos los ciclos.
 func (a *App) exportCSV(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(`
@@ -662,6 +719,10 @@ func csvKind(k string, credit bool) string {
 		return "gasto_fijo"
 	case "cardpay":
 		return "pago_tarjeta"
+	case "loan_out":
+		return "prestamo_salida"
+	case "loan_in":
+		return "prestamo_entrada"
 	}
 	return k
 }

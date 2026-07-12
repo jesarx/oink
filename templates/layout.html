@@ -9,7 +9,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{v}}">
 </head>
 <body>
 <main>
@@ -20,11 +20,11 @@
   <a href="/" class="{{if eq .Nav "home"}}on{{end}}"><span class="ico">◉</span>Hoy</a>
   <a href="/entradas" class="{{if eq .Nav "entradas"}}on{{end}}"><span class="ico">↓</span>Entradas</a>
   <a href="/fijos" class="{{if eq .Nav "fijos"}}on{{end}}"><span class="ico">↻</span>Fijos</a>
-  <a href="/mes" class="{{if eq .Nav "mes"}}on{{end}}"><span class="ico">≡</span>Mes</a>
   <a href="/reportes" class="{{if eq .Nav "reportes"}}on{{end}}"><span class="ico">▦</span>Reportes</a>
+  <a href="/prestamos" class="{{if eq .Nav "prestamos"}}on{{end}}"><span class="ico">⇄</span>Préstamos</a>
   <a href="/ajustes" class="{{if eq .Nav "ajustes"}}on{{end}}"><span class="ico">⚙</span>Ajustes</a>
 </nav>
 {{end}}
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{v}}"></script>
 </body>
 </html>

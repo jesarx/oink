@@ -14,7 +14,7 @@ func fsSub(f embed.FS, dir string) (http.FileSystem, error) {
 	return http.FS(sub), nil
 }
 
-func serveStatic(fsys http.FileSystem, name, ctype string) http.Handler {
+func serveStatic(fsys http.FileSystem, name, ctype, cache string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f, err := fsys.Open(name)
 		if err != nil {
@@ -24,6 +24,7 @@ func serveStatic(fsys http.FileSystem, name, ctype string) http.Handler {
 		defer f.Close()
 		st, _ := f.Stat()
 		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("Cache-Control", cache)
 		http.ServeContent(w, r, name, st.ModTime(), f)
 	})
 }

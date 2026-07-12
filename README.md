@@ -16,6 +16,7 @@ Disponible = Entradas recibidas − Meta de ahorro − Gastos fijos (pagados y p
 - El **sobre semanal de efectivo**: el retiro del cajero descuenta del disponible; los gastos en efectivo solo descuentan del sobre (el dinero ya salió al retirarlo). El sobre corre de lunes a domingo.
 - Las **entradas en efectivo** (no fijas marcadas "en efectivo") van directo al sobre semanal: cuentan como entrada del mes, pero no engordan el disponible bancario, porque ese dinero nunca pasó por el banco.
 - El **ciclo mensual no es el mes calendario**: empieza cuando registras la primera de tus entradas. Si registras una entrada que ya llegó en el ciclo abierto, oink cierra el mes y abre uno nuevo.
+- Los **préstamos** (lo que prestas y te prestan) no son gasto ni entrada: son transferencias. Si eliges reflejarlos, mueven el sobre (efectivo) o el disponible (tarjeta/banco) al registrarlos y al saldarlos, pero nunca ensucian los reportes de consumo.
 
 ## Requisitos
 

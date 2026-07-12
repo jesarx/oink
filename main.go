@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log"
@@ -26,6 +28,7 @@ type App struct {
 	tmpl map[string]*template.Template
 	loc  *time.Location
 	hash string // hash pbkdf2 de la contraseña
+	ver  string // versión de assets (hash del css/js) para cache busting
 }
 
 const schema = `
@@ -57,7 +60,7 @@ CREATE TABLE IF NOT EXISTS cycles (
 CREATE TABLE IF NOT EXISTS transactions (
     id          serial PRIMARY KEY,
     cycle_id    int NOT NULL REFERENCES cycles(id) ON DELETE CASCADE,
-    kind        text NOT NULL CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay')),
+    kind        text NOT NULL CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay','loan_out','loan_in')),
     template_id int REFERENCES templates(id) ON DELETE SET NULL,
     amount      bigint NOT NULL,
     concept     text NOT NULL DEFAULT '',
@@ -75,9 +78,20 @@ CREATE INDEX IF NOT EXISTS transactions_cat_idx ON transactions (cycle_id, categ
 -- de crédito, no cuenta como gasto). Se recrea el CHECK con la lista completa.
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_kind_check;
 ALTER TABLE transactions ADD CONSTRAINT transactions_kind_check
-    CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay'));
+    CHECK (kind IN ('card','cash','withdrawal','income','fixed','cardpay','loan_out','loan_in'));
 -- migración para bases existentes: entradas en efectivo (van al sobre semanal)
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cash boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS transactions_made_idx ON transactions (made_on);
+
+CREATE TABLE IF NOT EXISTS debts (
+    id         serial PRIMARY KEY,
+    direction  text NOT NULL CHECK (direction IN ('lent','borrowed')),
+    name       text NOT NULL,
+    amount     bigint NOT NULL,
+    cash       boolean NOT NULL DEFAULT true,
+    created_on date NOT NULL,
+    settled_on date
+);
 
 CREATE TABLE IF NOT EXISTS sessions (
     token      text PRIMARY KEY,
@@ -124,17 +138,19 @@ func main() {
 		log.Fatal("migración: ", err)
 	}
 
-	app := &App{db: db, loc: loc, hash: hash}
+	app := &App{db: db, loc: loc, hash: hash, ver: assetVersion()}
 	app.parseTemplates()
 
 	mux := http.NewServeMux()
 
-	// estáticos (embebidos en el binario)
+	// estáticos (embebidos en el binario); las URLs llevan ?v=<hash> así que
+	// pueden cachearse fuerte: un deploy nuevo cambia la URL, no el caché
 	static, _ := fsSub(staticFS, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(static)))
-	mux.Handle("GET /manifest.webmanifest", serveStatic(static, "manifest.webmanifest", "application/manifest+json"))
-	mux.Handle("GET /sw.js", serveStatic(static, "sw.js", "text/javascript"))
-	mux.Handle("GET /favicon.svg", serveStatic(static, "favicon.svg", "image/svg+xml"))
+	mux.Handle("GET /static/", cacheControl("public, max-age=31536000, immutable",
+		http.StripPrefix("/static/", http.FileServer(static))))
+	mux.Handle("GET /manifest.webmanifest", serveStatic(static, "manifest.webmanifest", "application/manifest+json", "public, max-age=3600"))
+	mux.Handle("GET /sw.js", serveStatic(static, "sw.js", "text/javascript", "no-cache"))
+	mux.Handle("GET /favicon.svg", serveStatic(static, "favicon.svg", "image/svg+xml", "public, max-age=86400"))
 
 	// sesión
 	mux.HandleFunc("GET /login", app.loginPage)
@@ -145,9 +161,13 @@ func main() {
 	mux.HandleFunc("GET /{$}", app.requireAuth(app.home))
 	mux.HandleFunc("GET /entradas", app.requireAuth(app.incomesPage))
 	mux.HandleFunc("GET /fijos", app.requireAuth(app.fixedPage))
-	mux.HandleFunc("GET /mes", app.requireAuth(app.monthPage))
 	mux.HandleFunc("GET /reportes", app.requireAuth(app.reportsPage))
+	mux.HandleFunc("GET /prestamos", app.requireAuth(app.debtsPage))
 	mux.HandleFunc("GET /export.csv", app.requireAuth(app.exportCSV))
+	// /mes se fusionó con /reportes (los movimientos viven en la vista Mes)
+	mux.HandleFunc("GET /mes", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/reportes", http.StatusMovedPermanently)
+	})
 	mux.HandleFunc("GET /ajustes", app.requireAuth(app.settingsPage))
 	mux.HandleFunc("GET /tx/{id}", app.requireAuth(app.txEditPage))
 
@@ -163,6 +183,9 @@ func main() {
 	mux.HandleFunc("POST /template/{id}/delete", app.requireAuth(app.templateDelete))
 	mux.HandleFunc("POST /ajustes", app.requireAuth(app.settingsPost))
 	mux.HandleFunc("POST /cycle/close", app.requireAuth(app.cycleClose))
+	mux.HandleFunc("POST /debt", app.requireAuth(app.debtCreate))
+	mux.HandleFunc("POST /debt/{id}/settle", app.requireAuth(app.debtSettle))
+	mux.HandleFunc("POST /debt/{id}/delete", app.requireAuth(app.debtDelete))
 
 	srv := &http.Server{
 		Addr:         addr,
@@ -198,6 +221,24 @@ func sameHost(origin, host string) bool {
 	origin = strings.TrimPrefix(origin, "https://")
 	origin = strings.TrimPrefix(origin, "http://")
 	return strings.EqualFold(origin, host)
+}
+
+// assetVersion deriva un hash corto del css/js embebido: cambia con cada
+// deploy que los toque y sirve para versionar sus URLs (?v=...).
+func assetVersion() string {
+	h := sha256.New()
+	for _, p := range []string{"static/style.css", "static/app.js"} {
+		b, _ := staticFS.ReadFile(p)
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:10]
+}
+
+func cacheControl(value string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", value)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func envOr(k, def string) string {
