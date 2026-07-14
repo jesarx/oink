@@ -268,6 +268,43 @@ input:focus, select:focus { outline: 2px solid var(--pink); outline-offset: 1px;
 .chart-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
 .export { display: block; text-align: center; margin: 18px 0 6px; }
 
+/* ---- barra de sincronización (cola offline) ---- */
+#syncbar {
+  position: sticky; top: 0; z-index: 15;
+  background: #2c2416; color: var(--amber);
+  font-size: 13px; text-align: center; padding: 7px 12px;
+}
+
+/* ---- pendientes ---- */
+.todoadd { display: flex; gap: 8px; align-items: flex-end; margin: 14px 0 18px; }
+.todoadd textarea {
+  flex: 1; background: var(--card2); border: 1px solid var(--line); border-radius: 10px;
+  color: var(--text); font: inherit; font-size: 16px; padding: 10px 12px;
+  resize: vertical; min-height: 44px;
+}
+.todoadd textarea:focus { outline: 2px solid var(--pink); outline-offset: 1px; border-color: transparent; }
+.todolist { list-style: none; padding: 0; }
+.todolist li {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 2px; border-bottom: 1px solid var(--line);
+}
+.todolist li:last-child { border-bottom: 0; }
+.todobody { flex: 1; white-space: pre-wrap; word-break: break-word; }
+.tododate { flex-shrink: 0; padding-top: 3px; }
+.tickbtn {
+  background: none; border: 1.5px solid var(--muted); border-radius: 50%;
+  width: 26px; height: 26px; flex-shrink: 0; color: var(--muted);
+  font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.tickbtn.on { border-color: var(--green); color: var(--green); }
+.todolist.done .todobody { color: var(--muted); text-decoration: line-through; }
+.xdel { background: none; border: 0; color: var(--faint); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.todolist li.queued .todobody { color: var(--muted); }
+.todolist li.offdone .todobody { text-decoration: line-through; color: var(--muted); }
+.donelist { margin-top: 16px; }
+.donelist summary { color: var(--faint); font-size: 13px; cursor: pointer; padding: 4px 0; }
+
 /* ---- préstamos ---- */
 .split2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
 .statcard {

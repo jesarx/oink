@@ -64,7 +64,7 @@ func (a *App) parseTemplates() {
 			return k
 		},
 	}
-	pages := []string{"login.html", "home.html", "incomes.html", "fixed.html", "reportes.html", "prestamos.html", "settings.html", "txedit.html"}
+	pages := []string{"login.html", "home.html", "incomes.html", "pendientes.html", "reportes.html", "prestamos.html", "settings.html", "txedit.html"}
 	a.tmpl = make(map[string]*template.Template, len(pages))
 	for _, p := range pages {
 		t := template.Must(template.New("layout.html").Funcs(funcs).
@@ -129,8 +129,24 @@ func (a *App) txCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	concept := strings.TrimSpace(r.FormValue("concept"))
 	credit := kind == "card" && r.FormValue("credit") != "off"
-	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, category, credit, made_on)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`, c.ID, kind, amount, concept, category, credit, a.today())
+
+	// captura offline: el cliente manda la fecha real del gasto (por si se
+	// sincroniza días después) y un client_id único; un reintento con el
+	// mismo client_id no duplica (ON CONFLICT DO NOTHING).
+	madeOn := a.today()
+	if v := r.FormValue("made_on"); v != "" {
+		if t, err := time.ParseInLocation("2006-01-02", v, a.loc); err == nil &&
+			!t.After(madeOn) && t.After(madeOn.AddDate(0, -2, 0)) {
+			madeOn = t
+		}
+	}
+	clientID := sql.NullString{}
+	if v := strings.TrimSpace(r.FormValue("client_id")); v != "" && len(v) <= 64 {
+		clientID = sql.NullString{String: v, Valid: true}
+	}
+	_, err = a.db.Exec(`INSERT INTO transactions (cycle_id, kind, amount, concept, category, credit, made_on, client_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (client_id) DO NOTHING`, c.ID, kind, amount, concept, category, credit, madeOn, clientID)
 	if err != nil {
 		a.fail(w, err)
 		return
@@ -317,21 +333,7 @@ func (a *App) incomeReceive(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/entradas", http.StatusSeeOther)
 }
 
-// ---- fijos ----
-
-func (a *App) fixedPage(w http.ResponseWriter, r *http.Request) {
-	c, err := a.openCycle()
-	if err != nil {
-		a.fail(w, err)
-		return
-	}
-	tpls, err := a.listTemplates("fixed", c.ID)
-	if err != nil {
-		a.fail(w, err)
-		return
-	}
-	a.render(w, "fixed.html", map[string]any{"Nav": "fijos", "Templates": tpls, "Cycle": c})
-}
+// ---- fijos (viven dentro de Ajustes) ----
 
 func (a *App) fixedPay(w http.ResponseWriter, r *http.Request) {
 	tplID, _ := strconv.Atoi(r.FormValue("template_id"))
@@ -367,7 +369,7 @@ func (a *App) fixedPay(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/fijos", http.StatusSeeOther)
+	http.Redirect(w, r, "/ajustes", http.StatusSeeOther)
 }
 
 // ---- plantillas (CRUD) ----
@@ -431,7 +433,7 @@ func (a *App) redirectByKind(w http.ResponseWriter, r *http.Request, kind string
 	if kind == "income" {
 		http.Redirect(w, r, "/entradas", http.StatusSeeOther)
 	} else {
-		http.Redirect(w, r, "/fijos", http.StatusSeeOther)
+		http.Redirect(w, r, "/ajustes", http.StatusSeeOther)
 	}
 }
 
@@ -566,6 +568,59 @@ func (a *App) reportsCharts(w http.ResponseWriter, r *http.Request) {
 		"SpentChart": barSVG(labels, spentVals, "#e06a93"),
 		"CatCharts":  catCharts,
 	})
+}
+
+// ---- pendientes ----
+
+func (a *App) todosPage(w http.ResponseWriter, r *http.Request) {
+	open, err := a.listTodos(false)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
+	done, _ := a.listTodos(true)
+	a.render(w, "pendientes.html", map[string]any{"Nav": "pendientes", "Open": open, "Done": done})
+}
+
+func (a *App) todoCreate(w http.ResponseWriter, r *http.Request) {
+	body := strings.TrimSpace(r.FormValue("body"))
+	if body == "" || len(body) > 1000 {
+		http.Error(w, "texto inválido", 400)
+		return
+	}
+	clientID := sql.NullString{}
+	if v := strings.TrimSpace(r.FormValue("client_id")); v != "" && len(v) <= 64 {
+		clientID = sql.NullString{String: v, Valid: true}
+	}
+	// mismo esquema de idempotencia que los gastos: la cola offline puede
+	// reintentar sin duplicar
+	if _, err := a.db.Exec(`INSERT INTO todos (body, client_id) VALUES ($1,$2)
+		ON CONFLICT (client_id) DO NOTHING`, body, clientID); err != nil {
+		a.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/pendientes", http.StatusSeeOther)
+}
+
+func (a *App) todoToggle(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	// el cliente manda el estado deseado ("set") para que un reintento de la
+	// cola offline sea idempotente: aplicar dos veces no revierte nada
+	switch r.FormValue("set") {
+	case "done":
+		a.db.Exec(`UPDATE todos SET done_at = now() WHERE id = $1 AND done_at IS NULL`, id)
+	case "open":
+		a.db.Exec(`UPDATE todos SET done_at = NULL WHERE id = $1`, id)
+	default:
+		a.db.Exec(`UPDATE todos SET done_at = CASE WHEN done_at IS NULL THEN now() ELSE NULL END WHERE id = $1`, id)
+	}
+	http.Redirect(w, r, "/pendientes", http.StatusSeeOther)
+}
+
+func (a *App) todoDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	a.db.Exec(`DELETE FROM todos WHERE id = $1`, id)
+	http.Redirect(w, r, "/pendientes", http.StatusSeeOther)
 }
 
 // ---- préstamos ----
@@ -736,9 +791,15 @@ func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, _ := a.openCycle()
+	tpls, err := a.listTemplates("fixed", c.ID)
+	if err != nil {
+		a.fail(w, err)
+		return
+	}
 	a.render(w, "settings.html", map[string]any{"Nav": "ajustes", "S": s, "Cycle": c,
-		"Goal":   strconv.FormatInt(s.SavingsGoal/100, 10),
-		"Weekly": strconv.FormatInt(s.WeeklyCash/100, 10)})
+		"Templates": tpls,
+		"Goal":      strconv.FormatInt(s.SavingsGoal/100, 10),
+		"Weekly":    strconv.FormatInt(s.WeeklyCash/100, 10)})
 }
 
 func (a *App) settingsPost(w http.ResponseWriter, r *http.Request) {
