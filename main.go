@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     credit      boolean NOT NULL DEFAULT false,
     cash        boolean NOT NULL DEFAULT false,
     made_on     date NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT now()
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    client_id   text UNIQUE
 );
 CREATE INDEX IF NOT EXISTS transactions_cycle_idx ON transactions (cycle_id, kind);
 -- migración para bases existentes: rubros (comida, libros, alcohol)
@@ -82,6 +83,18 @@ ALTER TABLE transactions ADD CONSTRAINT transactions_kind_check
 -- migración para bases existentes: entradas en efectivo (van al sobre semanal)
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cash boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS transactions_made_idx ON transactions (made_on);
+
+-- migración para bases existentes: idempotencia de la cola offline (un
+-- reintento de sincronización con el mismo client_id nunca duplica)
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS client_id text UNIQUE;
+
+CREATE TABLE IF NOT EXISTS todos (
+    id         serial PRIMARY KEY,
+    client_id  text UNIQUE,
+    body       text NOT NULL,
+    done_at    timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS debts (
     id         serial PRIMARY KEY,
@@ -160,13 +173,16 @@ func main() {
 	// páginas
 	mux.HandleFunc("GET /{$}", app.requireAuth(app.home))
 	mux.HandleFunc("GET /entradas", app.requireAuth(app.incomesPage))
-	mux.HandleFunc("GET /fijos", app.requireAuth(app.fixedPage))
+	mux.HandleFunc("GET /pendientes", app.requireAuth(app.todosPage))
 	mux.HandleFunc("GET /reportes", app.requireAuth(app.reportsPage))
 	mux.HandleFunc("GET /prestamos", app.requireAuth(app.debtsPage))
 	mux.HandleFunc("GET /export.csv", app.requireAuth(app.exportCSV))
-	// /mes se fusionó con /reportes (los movimientos viven en la vista Mes)
+	// /mes se fusionó con /reportes y /fijos vive dentro de /ajustes
 	mux.HandleFunc("GET /mes", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/reportes", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /fijos", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ajustes", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("GET /ajustes", app.requireAuth(app.settingsPage))
 	mux.HandleFunc("GET /tx/{id}", app.requireAuth(app.txEditPage))
@@ -186,6 +202,9 @@ func main() {
 	mux.HandleFunc("POST /debt", app.requireAuth(app.debtCreate))
 	mux.HandleFunc("POST /debt/{id}/settle", app.requireAuth(app.debtSettle))
 	mux.HandleFunc("POST /debt/{id}/delete", app.requireAuth(app.debtDelete))
+	mux.HandleFunc("POST /todo", app.requireAuth(app.todoCreate))
+	mux.HandleFunc("POST /todo/{id}/toggle", app.requireAuth(app.todoToggle))
+	mux.HandleFunc("POST /todo/{id}/delete", app.requireAuth(app.todoDelete))
 
 	srv := &http.Server{
 		Addr:         addr,

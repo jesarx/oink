@@ -1,0 +1,44 @@
+{{define "content"}}
+<h1>Pendientes</h1>
+
+<form method="post" action="/todo" class="todoadd" data-offline>
+  <input type="hidden" name="client_id">
+  <textarea name="body" rows="2" maxlength="1000" placeholder="¿Qué no se te debe olvidar?" required></textarea>
+  <button class="btn primary">Agregar</button>
+</form>
+
+<ul class="todolist" id="todolist">
+{{range .Open}}
+  <li data-id="{{.ID}}">
+    <form method="post" action="/todo/{{.ID}}/toggle" class="inline" data-offline data-optimistic="done">
+      <input type="hidden" name="set" value="done">
+      <button class="tickbtn" aria-label="Marcar como hecho">○</button>
+    </form>
+    <p class="todobody">{{.Body}}</p>
+    <span class="muted small tododate">{{date .CreatedAt}}</span>
+  </li>
+{{else}}
+  <li class="empty" id="todo-empty">Nada pendiente. A vivir.</li>
+{{end}}
+</ul>
+
+{{if .Done}}
+<details class="donelist">
+  <summary>Hechas ({{len .Done}})</summary>
+  <ul class="todolist done">
+  {{range .Done}}
+    <li data-id="{{.ID}}">
+      <form method="post" action="/todo/{{.ID}}/toggle" class="inline" data-offline data-optimistic="undone">
+        <input type="hidden" name="set" value="open">
+        <button class="tickbtn on" aria-label="Regresar a pendientes">✓</button>
+      </form>
+      <p class="todobody">{{.Body}}</p>
+      <form method="post" action="/todo/{{.ID}}/delete" class="inline">
+        <button class="xdel" data-confirm="¿Borrar definitivamente?" aria-label="Borrar">×</button>
+      </form>
+    </li>
+  {{end}}
+  </ul>
+</details>
+{{end}}
+{{end}}

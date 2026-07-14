@@ -306,6 +306,39 @@ func (a *App) listTemplates(kind string, cycleID int) ([]Template, error) {
 	return out, rows.Err()
 }
 
+// ---- pendientes (todos) ----
+
+type Todo struct {
+	ID        int
+	Body      string
+	DoneAt    sql.NullTime
+	CreatedAt time.Time
+}
+
+// listTodos: abiertos en orden de llegada (el más viejo arriba);
+// hechos del más reciente al más viejo, acotados.
+func (a *App) listTodos(done bool) ([]Todo, error) {
+	where, order, limit := "done_at IS NULL", "created_at ASC, id ASC", 200
+	if done {
+		where, order, limit = "done_at IS NOT NULL", "done_at DESC, id DESC", 30
+	}
+	rows, err := a.db.Query(fmt.Sprintf(`SELECT id, body, done_at, created_at
+		FROM todos WHERE %s ORDER BY %s LIMIT %d`, where, order, limit))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Todo
+	for rows.Next() {
+		var t Todo
+		if err := rows.Scan(&t.ID, &t.Body, &t.DoneAt, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // ---- préstamos (deudas con personas) ----
 
 type Debt struct {

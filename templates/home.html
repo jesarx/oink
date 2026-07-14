@@ -66,18 +66,20 @@
 </section>
 
 {{if .D.PendingFixed}}
-<a class="row link" href="/fijos">
+<a class="row link" href="/ajustes">
   <p>{{.D.PendingFixed}} gasto{{if gt .D.PendingFixed 1}}s{{end}} fijo{{if gt .D.PendingFixed 1}}s{{end}} por pagar este mes</p>
   <span class="chev">›</span>
 </a>
 {{end}}
 
 <div class="overlay" id="keypad" hidden>
-  <form method="post" action="/tx" id="txform">
+  <form method="post" action="/tx" id="txform" data-offline>
     <input type="hidden" name="kind" id="kp-kind">
     <input type="hidden" name="amount" id="kp-amount">
     <input type="hidden" name="category" id="kp-category">
     <input type="hidden" name="credit" id="kp-credit" value="off">
+    <input type="hidden" name="client_id">
+    <input type="hidden" name="made_on">
     <header class="kp-head">
       <button type="button" class="x" data-close aria-label="Cerrar">×</button>
       <span id="kp-title">Gasto</span>

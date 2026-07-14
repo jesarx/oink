@@ -17,6 +17,8 @@ Disponible = Entradas recibidas − Meta de ahorro − Gastos fijos (pagados y p
 - Las **entradas en efectivo** (no fijas marcadas "en efectivo") van directo al sobre semanal: cuentan como entrada del mes, pero no engordan el disponible bancario, porque ese dinero nunca pasó por el banco.
 - El **ciclo mensual no es el mes calendario**: empieza cuando registras la primera de tus entradas. Si registras una entrada que ya llegó en el ciclo abierto, oink cierra el mes y abre uno nuevo.
 - Los **préstamos** (lo que prestas y te prestan) no son gasto ni entrada: son transferencias. Si eliges reflejarlos, mueven el sobre (efectivo) o el disponible (tarjeta/banco) al registrarlos y al saldarlos, pero nunca ensucian los reportes de consumo.
+- **Funciona sin conexión**: la app abre con la última copia vista de cada página, y los gastos y pendientes capturados sin red se guardan en una cola local que se sincroniza sola al volver la conexión (cada registro lleva un id único, así que un reintento nunca duplica).
+- **Pendientes**: una lista simple de tareas (solo texto, sin título) con marcar/desmarcar como hecho, también utilizable offline.
 
 ## Requisitos
 
