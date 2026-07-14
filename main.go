@@ -88,13 +88,24 @@ CREATE INDEX IF NOT EXISTS transactions_made_idx ON transactions (made_on);
 -- reintento de sincronización con el mismo client_id nunca duplica)
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS client_id text UNIQUE;
 
+CREATE TABLE IF NOT EXISTS todo_cats (
+    id       serial PRIMARY KEY,
+    name     text NOT NULL,
+    position smallint NOT NULL DEFAULT 0
+);
+INSERT INTO todo_cats (name) SELECT 'General' WHERE NOT EXISTS (SELECT 1 FROM todo_cats);
+
 CREATE TABLE IF NOT EXISTS todos (
     id         serial PRIMARY KEY,
     client_id  text UNIQUE,
     body       text NOT NULL,
+    cat_id     int REFERENCES todo_cats(id),
     done_at    timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+-- migración para bases existentes: pendientes sin categoría van a la primera
+ALTER TABLE todos ADD COLUMN IF NOT EXISTS cat_id int REFERENCES todo_cats(id);
+UPDATE todos SET cat_id = (SELECT id FROM todo_cats ORDER BY position, id LIMIT 1) WHERE cat_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS debts (
     id         serial PRIMARY KEY,
@@ -205,6 +216,9 @@ func main() {
 	mux.HandleFunc("POST /todo", app.requireAuth(app.todoCreate))
 	mux.HandleFunc("POST /todo/{id}/toggle", app.requireAuth(app.todoToggle))
 	mux.HandleFunc("POST /todo/{id}/delete", app.requireAuth(app.todoDelete))
+	mux.HandleFunc("POST /todocat", app.requireAuth(app.todoCatCreate))
+	mux.HandleFunc("POST /todocat/{id}", app.requireAuth(app.todoCatUpdate))
+	mux.HandleFunc("POST /todocat/{id}/delete", app.requireAuth(app.todoCatDelete))
 
 	srv := &http.Server{
 		Addr:         addr,

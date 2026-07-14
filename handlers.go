@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func (a *App) parseTemplates() {
@@ -573,13 +574,28 @@ func (a *App) reportsCharts(w http.ResponseWriter, r *http.Request) {
 // ---- pendientes ----
 
 func (a *App) todosPage(w http.ResponseWriter, r *http.Request) {
-	open, err := a.listTodos(false)
+	cats, err := a.listTodoCats()
+	if err != nil || len(cats) == 0 {
+		a.fail(w, fmt.Errorf("categorías de pendientes: %v", err))
+		return
+	}
+	cur := cats[0]
+	if v, _ := strconv.Atoi(r.URL.Query().Get("c")); v > 0 {
+		for _, c := range cats {
+			if c.ID == v {
+				cur = c
+				break
+			}
+		}
+	}
+	open, err := a.listTodos(cur.ID, false)
 	if err != nil {
 		a.fail(w, err)
 		return
 	}
-	done, _ := a.listTodos(true)
-	a.render(w, "pendientes.html", map[string]any{"Nav": "pendientes", "Open": open, "Done": done})
+	done, _ := a.listTodos(cur.ID, true)
+	a.render(w, "pendientes.html", map[string]any{
+		"Nav": "pendientes", "Cats": cats, "Cur": cur, "Open": open, "Done": done})
 }
 
 func (a *App) todoCreate(w http.ResponseWriter, r *http.Request) {
@@ -588,18 +604,29 @@ func (a *App) todoCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "texto inválido", 400)
 		return
 	}
+	// si la categoría no existe (p. ej. se borró mientras el registro
+	// esperaba en la cola offline), cae a la primera
+	catID, _ := strconv.Atoi(r.FormValue("cat_id"))
+	var ok bool
+	a.db.QueryRow(`SELECT EXISTS (SELECT 1 FROM todo_cats WHERE id = $1)`, catID).Scan(&ok)
+	if !ok {
+		if err := a.db.QueryRow(`SELECT id FROM todo_cats ORDER BY position, id LIMIT 1`).Scan(&catID); err != nil {
+			a.fail(w, err)
+			return
+		}
+	}
 	clientID := sql.NullString{}
 	if v := strings.TrimSpace(r.FormValue("client_id")); v != "" && len(v) <= 64 {
 		clientID = sql.NullString{String: v, Valid: true}
 	}
 	// mismo esquema de idempotencia que los gastos: la cola offline puede
 	// reintentar sin duplicar
-	if _, err := a.db.Exec(`INSERT INTO todos (body, client_id) VALUES ($1,$2)
-		ON CONFLICT (client_id) DO NOTHING`, body, clientID); err != nil {
+	if _, err := a.db.Exec(`INSERT INTO todos (body, cat_id, client_id) VALUES ($1,$2,$3)
+		ON CONFLICT (client_id) DO NOTHING`, body, catID, clientID); err != nil {
 		a.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/pendientes", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/pendientes?c=%d", catID), http.StatusSeeOther)
 }
 
 func (a *App) todoToggle(w http.ResponseWriter, r *http.Request) {
@@ -614,13 +641,77 @@ func (a *App) todoToggle(w http.ResponseWriter, r *http.Request) {
 	default:
 		a.db.Exec(`UPDATE todos SET done_at = CASE WHEN done_at IS NULL THEN now() ELSE NULL END WHERE id = $1`, id)
 	}
-	http.Redirect(w, r, "/pendientes", http.StatusSeeOther)
+	http.Redirect(w, r, a.todoCatURL(id), http.StatusSeeOther)
 }
 
 func (a *App) todoDelete(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(r.PathValue("id"))
+	dest := a.todoCatURL(id)
 	a.db.Exec(`DELETE FROM todos WHERE id = $1`, id)
-	http.Redirect(w, r, "/pendientes", http.StatusSeeOther)
+	http.Redirect(w, r, dest, http.StatusSeeOther)
+}
+
+// todoCatURL regresa la pestaña de la categoría del pendiente, para volver
+// a donde estaba el usuario después de una acción.
+func (a *App) todoCatURL(todoID int) string {
+	var cat sql.NullInt64
+	a.db.QueryRow(`SELECT cat_id FROM todos WHERE id = $1`, todoID).Scan(&cat)
+	if cat.Valid {
+		return fmt.Sprintf("/pendientes?c=%d", cat.Int64)
+	}
+	return "/pendientes"
+}
+
+// ---- categorías de pendientes (se administran en Ajustes) ----
+
+func validCatName(name string) bool {
+	return name != "" && utf8.RuneCountInString(name) <= 12
+}
+
+func (a *App) todoCatCreate(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.FormValue("name"))
+	if !validCatName(name) {
+		http.Error(w, "nombre inválido (máximo 12 caracteres)", 400)
+		return
+	}
+	var n int
+	a.db.QueryRow(`SELECT COUNT(*) FROM todo_cats`).Scan(&n)
+	if n >= 3 {
+		http.Error(w, "máximo 3 categorías", 400)
+		return
+	}
+	a.db.Exec(`INSERT INTO todo_cats (name, position) VALUES ($1, $2)`, name, n)
+	http.Redirect(w, r, "/ajustes", http.StatusSeeOther)
+}
+
+func (a *App) todoCatUpdate(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	name := strings.TrimSpace(r.FormValue("name"))
+	if !validCatName(name) {
+		http.Error(w, "nombre inválido (máximo 12 caracteres)", 400)
+		return
+	}
+	a.db.Exec(`UPDATE todo_cats SET name = $1 WHERE id = $2`, name, id)
+	http.Redirect(w, r, "/ajustes", http.StatusSeeOther)
+}
+
+func (a *App) todoCatDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(r.PathValue("id"))
+	var n int
+	a.db.QueryRow(`SELECT COUNT(*) FROM todo_cats`).Scan(&n)
+	if n <= 1 {
+		http.Error(w, "debe existir al menos una categoría", 400)
+		return
+	}
+	// sus pendientes se mudan a la primera categoría restante
+	if _, err := a.db.Exec(`UPDATE todos SET cat_id =
+		(SELECT id FROM todo_cats WHERE id <> $1 ORDER BY position, id LIMIT 1)
+		WHERE cat_id = $1`, id); err != nil {
+		a.fail(w, err)
+		return
+	}
+	a.db.Exec(`DELETE FROM todo_cats WHERE id = $1`, id)
+	http.Redirect(w, r, "/ajustes", http.StatusSeeOther)
 }
 
 // ---- préstamos ----
@@ -796,8 +887,9 @@ func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, err)
 		return
 	}
+	cats, _ := a.listTodoCats()
 	a.render(w, "settings.html", map[string]any{"Nav": "ajustes", "S": s, "Cycle": c,
-		"Templates": tpls,
+		"Templates": tpls, "TodoCats": cats,
 		"Goal":      strconv.FormatInt(s.SavingsGoal/100, 10),
 		"Weekly":    strconv.FormatInt(s.WeeklyCash/100, 10)})
 }

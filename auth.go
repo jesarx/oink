@@ -18,9 +18,12 @@ import (
 
 const (
 	sessionCookie = "oink_session"
-	sessionTTL    = 30 * 24 * time.Hour
-	kdfIter       = 300_000
-	kdfKeyLen     = 32
+	sessionTTL    = 90 * 24 * time.Hour
+	// renovación deslizante: si pasó más de una semana desde la última
+	// emisión, la sesión se extiende al usarla; una sesión activa no caduca
+	sessionRenew = 7 * 24 * time.Hour
+	kdfIter      = 300_000
+	kdfKeyLen    = 32
 )
 
 // ---- PBKDF2-HMAC-SHA256 (RFC 8018), implementado sobre la stdlib ----
@@ -125,26 +128,41 @@ func (a *App) createSession(w http.ResponseWriter) error {
 		return err
 	}
 	a.db.Exec(`DELETE FROM sessions WHERE expires_at < now()`)
-	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: token, Path: "/",
-		Expires: exp, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
-	})
+	setSessionCookie(w, token, exp)
 	return nil
 }
 
-func (a *App) validSession(r *http.Request) bool {
+func setSessionCookie(w http.ResponseWriter, token string, exp time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: token, Path: "/",
+		Expires: exp, MaxAge: int(time.Until(exp).Seconds()),
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (a *App) validSession(w http.ResponseWriter, r *http.Request) bool {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || len(c.Value) != 64 {
 		return false
 	}
-	var ok bool
-	err = a.db.QueryRow(`SELECT true FROM sessions WHERE token = $1 AND expires_at > now()`, c.Value).Scan(&ok)
-	return err == nil && ok
+	var exp time.Time
+	if err := a.db.QueryRow(`SELECT expires_at FROM sessions WHERE token = $1 AND expires_at > now()`, c.Value).Scan(&exp); err != nil {
+		return false
+	}
+	// renovación deslizante (máximo una vez por semana para no escribir
+	// en la base en cada request)
+	if time.Until(exp) < sessionTTL-sessionRenew {
+		newExp := time.Now().Add(sessionTTL)
+		if _, err := a.db.Exec(`UPDATE sessions SET expires_at = $1 WHERE token = $2`, newExp, c.Value); err == nil {
+			setSessionCookie(w, c.Value, newExp)
+		}
+	}
+	return true
 }
 
 func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !a.validSession(r) {
+		if !a.validSession(w, r) {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
@@ -153,7 +171,7 @@ func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	if a.validSession(r) {
+	if a.validSession(w, r) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}

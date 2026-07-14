@@ -1,13 +1,20 @@
 {{define "content"}}
 <h1>Pendientes</h1>
 
+{{if gt (len .Cats) 1}}
+<nav class="subtabs">
+  {{range .Cats}}<a href="/pendientes?c={{.ID}}" class="{{if eq .ID $.Cur.ID}}on{{end}}">{{.Name}}</a>{{end}}
+</nav>
+{{end}}
+
 <form method="post" action="/todo" class="todoadd" data-offline>
   <input type="hidden" name="client_id">
+  <input type="hidden" name="cat_id" value="{{.Cur.ID}}">
   <textarea name="body" rows="2" maxlength="1000" placeholder="¿Qué no se te debe olvidar?" required></textarea>
   <button class="btn primary">Agregar</button>
 </form>
 
-<ul class="todolist" id="todolist">
+<ul class="todolist" id="todolist" data-cat="{{.Cur.ID}}">
 {{range .Open}}
   <li data-id="{{.ID}}">
     <form method="post" action="/todo/{{.ID}}/toggle" class="inline" data-offline data-optimistic="done">
