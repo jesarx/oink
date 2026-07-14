@@ -146,7 +146,12 @@
   // al cargar: pinta lo pendiente de la cola y trata de sincronizar
   readQueue().forEach(function (it) {
     if (it.url === "/todo") {
-      appendPendingTodo(new URLSearchParams(it.body).get("body") || "");
+      var params = new URLSearchParams(it.body);
+      var list = document.getElementById("todolist");
+      // solo en la pestaña de su categoría
+      if (list && (!list.dataset.cat || params.get("cat_id") === list.dataset.cat)) {
+        appendPendingTodo(params.get("body") || "");
+      }
     } else {
       var m = it.url.match(/^\/todo\/(\d+)\/toggle$/);
       if (m) {
@@ -339,5 +344,10 @@
   // ---- service worker ----
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(function () {});
+  }
+  // pide almacenamiento persistente: reduce que el sistema (sobre todo en
+  // Android) desaloje cookies, caché y la cola offline por falta de espacio
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(function () {});
   }
 })();

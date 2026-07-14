@@ -63,6 +63,35 @@
   </form>
 </details>
 
+<h2 class="sec">Categorías de pendientes</h2>
+<p class="muted small subsec">Hasta 3 y mínimo una; cada pendiente vive en una categoría. Nombres cortos (máx. 12 caracteres) para que quepan en los botones.</p>
+{{range .TodoCats}}
+<div class="row tpl">
+  <div><p>{{.Name}}</p></div>
+  <details>
+    <summary>Editar</summary>
+    <form method="post" action="/todocat/{{.ID}}" class="edit">
+      <input type="text" name="name" value="{{.Name}}" maxlength="12" required>
+      <button class="btn">Guardar</button>
+    </form>
+    {{if gt (len $.TodoCats) 1}}
+    <form method="post" action="/todocat/{{.ID}}/delete">
+      <button class="btn danger" data-confirm="¿Borrar esta categoría? Sus pendientes se moverán a la primera categoría restante.">Borrar</button>
+    </form>
+    {{end}}
+  </details>
+</div>
+{{end}}
+{{if lt (len .TodoCats) 3}}
+<details class="add">
+  <summary>+ Nueva categoría</summary>
+  <form method="post" action="/todocat" class="edit">
+    <input type="text" name="name" placeholder="Nombre (máx. 12)" maxlength="12" required>
+    <button class="btn primary">Agregar</button>
+  </form>
+</details>
+{{end}}
+
 <h2 class="sec">Ciclo</h2>
 <div class="row">
   <div>

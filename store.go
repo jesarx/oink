@@ -315,15 +315,37 @@ type Todo struct {
 	CreatedAt time.Time
 }
 
-// listTodos: abiertos en orden de llegada (el más viejo arriba);
-// hechos del más reciente al más viejo, acotados.
-func (a *App) listTodos(done bool) ([]Todo, error) {
+type TodoCat struct {
+	ID   int
+	Name string
+}
+
+func (a *App) listTodoCats() ([]TodoCat, error) {
+	rows, err := a.db.Query(`SELECT id, name FROM todo_cats ORDER BY position, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TodoCat
+	for rows.Next() {
+		var c TodoCat
+		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// listTodos por categoría: abiertos en orden de llegada (el más viejo
+// arriba); hechos del más reciente al más viejo, acotados.
+func (a *App) listTodos(catID int, done bool) ([]Todo, error) {
 	where, order, limit := "done_at IS NULL", "created_at ASC, id ASC", 200
 	if done {
 		where, order, limit = "done_at IS NOT NULL", "done_at DESC, id DESC", 30
 	}
 	rows, err := a.db.Query(fmt.Sprintf(`SELECT id, body, done_at, created_at
-		FROM todos WHERE %s ORDER BY %s LIMIT %d`, where, order, limit))
+		FROM todos WHERE cat_id = $1 AND %s ORDER BY %s LIMIT %d`, where, order, limit), catID)
 	if err != nil {
 		return nil, err
 	}
